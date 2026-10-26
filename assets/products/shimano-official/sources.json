@@ -1,0 +1,38 @@
+{
+  "ULTEGRA": {
+    "image": "assets/products/shimano-official/ultegra-main.avif",
+    "source": "https://dassets2.shimano.com/content/dam/Shimanofish/Common/Productsrelated/cg2SHIFGlobalREEL/cg3SHIFGlobalREELSpinningReel/SICPlanningProducts/Product/PRD_a075F000035yx29QAA_main.jpg"
+  },
+  "TWIN POWER": {
+    "image": "assets/products/shimano-official/twin-power-main.avif",
+    "source": "https://dassets2.shimano.com/content/dam/Shimanofish/Common/Productsrelated/cg2SHIFGlobalREEL/cg3SHIFGlobalREELSpinningReel/SICPlanningProducts/Product/PRD_a075F00003sLw5kQAC_main.jpg"
+  },
+  "STRADIC": {
+    "image": "assets/products/shimano-official/stradic-main.avif",
+    "source": "https://dassets2.shimano.com/content/dam/Shimanofish/Common/Productsrelated/cg2SHIFGlobalREEL/cg3SHIFGlobalREELSpinningReel/SICPlanningProducts/Product/PRD_a075F00003sLvoDQAS_main.jpg"
+  },
+  "SIENNA": {
+    "image": "assets/products/shimano-official/sienna-main.avif",
+    "source": "https://dassets2.shimano.com/content/dam/Shimanofish/Common/Productsrelated/cg2SHIFGlobalREEL/cg3SHIFGlobalREELSpinningReel/SICPlanningProducts/Product/PRD_a0710000020EMhKAAW_main.jpg"
+  },
+  "SEDONA": {
+    "image": "assets/products/shimano-official/sedona-main.avif",
+    "source": "https://dassets2.shimano.com/content/dam/Shimanofish/Common/Productsrelated/cg2SHIFGlobalREEL/cg3SHIFGlobalREELSpinningReel/SICPlanningProducts/Product/PRD_a075F00003s9eQ8QAI_main.jpg"
+  },
+  "SAHARA": {
+    "image": "assets/products/shimano-official/sahara-main.avif",
+    "source": "https://dassets2.shimano.com/content/dam/Shimanofish/Common/Productsrelated/cg2SHIFGlobalREEL/cg3SHIFGlobalREELSpinningReel/SICPlanningProducts/Product/PRD_a075F00003iiLI7QAM_main.jpg"
+  },
+  "NEXAVE": {
+    "image": "assets/products/shimano-official/nexave-main.avif",
+    "source": "https://dassets2.shimano.com/content/dam/Shimanofish/Common/Productsrelated/cg2SHIFGlobalREEL/cg3SHIFGlobalREELSpinningReel/SICPlanningProducts/Product/PRD_a075F00003sLx2FQAS_main.jpg"
+  },
+  "NASCI": {
+    "image": "assets/products/shimano-official/nasci-main.avif",
+    "source": "https://dassets2.shimano.com/content/dam/Shimanofish/Common/Productsrelated/cg2SHIFGlobalREEL/cg3SHIFGlobalREELSpinningReel/SICPlanningProducts/Product/PRD_a075F000035yx1uQAA_main.jpg"
+  },
+  "FX": {
+    "image": "assets/products/shimano-official/fx-main.avif",
+    "source": "https://dassets2.shimano.com/content/dam/Shimanofish/Common/Productsrelated/cg2SHIFGlobalREEL/cg3SHIFGlobalREELSpinningReel/SICPlanningProducts/Product/PRD_a075F00003HsPK0QAN_main.jpg"
+  }
+}

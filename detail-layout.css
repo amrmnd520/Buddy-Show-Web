@@ -1,0 +1,30 @@
+/* Product window layout, 26 October 2026: smaller photo, colors in 2 rows, larger buy panel. */
+#product-detail{width:min(1120px,95vw)}
+#product-detail .detail-body{grid-template-columns:minmax(0,.9fr) minmax(0,1.1fr);gap:32px;padding:28px}
+#product-detail .detail-photo{height:300px}
+#product-detail .detail-photo.enlarged{height:auto}
+#product-detail .detail-image-wrap{position:sticky;top:0}
+/* right panel */
+#detail-content>div:last-child{font-size:16px}
+#detail-content>div:last-child .brand{font-size:14px}
+#product-detail .detail-body h2{font-size:32px;line-height:1.2;margin:6px 0 10px}
+#detail-content>div:last-child .detail-meta{font-size:15px}
+#detail-content>div:last-child>.price{font-size:32px;margin:14px 0 18px}
+#product-detail .color-code-label{display:block;font-size:17px;font-weight:700;margin-bottom:8px}
+#product-detail .color-code-input,#product-detail .duo-color-select{max-width:none;width:100%;font-size:17px;padding:14px;min-height:52px}
+#detail-content>div:last-child>.add{display:block;width:100%;font-size:19px;padding:18px 20px;border-radius:6px;margin:14px 0}
+#product-detail .duo-status{font-size:14px}
+/* color choices: always 2 rows, scroll sideways when there are many */
+#product-detail .duo-choice-grid{grid-template-columns:none;grid-template-rows:repeat(2,auto);grid-auto-flow:column;grid-auto-columns:minmax(104px,1fr);overflow-x:auto;gap:10px;padding-bottom:6px;margin:16px 0}
+#product-detail .duo-choice{min-height:0;padding:8px 6px}
+#product-detail .duo-choice img{height:56px}
+#product-detail .duo-choice strong{font-size:14px;overflow-wrap:normal;white-space:nowrap}
+#product-detail .duo-choice small{font-size:11px}
+@media(max-width:650px){
+  #product-detail .detail-body{grid-template-columns:1fr;padding:16px;gap:16px}
+  #product-detail .detail-image-wrap{position:static}
+  #product-detail .detail-photo{height:230px}
+  #product-detail .detail-body h2{font-size:24px}
+  #detail-content>div:last-child>.price{font-size:26px}
+  #product-detail .duo-choice-grid{grid-auto-columns:minmax(92px,1fr)}
+}

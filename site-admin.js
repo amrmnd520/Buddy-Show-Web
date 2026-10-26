@@ -14,7 +14,8 @@
     hero: { image: '', title: 'ЗАГАСЧЛАЛ БОЛ ЗӨВХӨН ХОББИ БИШ.\nАМЬДРАЛЫН ХЭВ МАЯГ.', titleSize: 14, button: 'БҮТЭЭГДЭХҮҮН ҮЗЭХ ↗', showButton: true, height: 420, darkness: 65, align: 'left', position: 55 },
     menu: { showCategories: true, items: [] },
     layout: { order: SECTIONS.map(s => s[0]), hidden: [], columns: 4 },
-    colors: { header: '#101c26', accent: '#d77a35', background: '#f5f3ee' }
+    colors: { header: '#101c26', accent: '#d77a35', background: '#f5f3ee' },
+    soldOut: []
   };
   const clone = o => JSON.parse(JSON.stringify(o));
   function merge(base, extra) {
@@ -217,7 +218,7 @@ body{background:${c.background}}
     const text = '/* Buddy Shop website settings, exported ' + new Date().toISOString().slice(0, 10) + '. */\nwindow.BUDDY_SITE_SETTINGS = ' + JSON.stringify(S, null, 2) + ';\n';
     const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([text], {type: 'text/javascript'})); a.download = 'site-settings.js'; a.click();
     setTimeout(() => URL.revokeObjectURL(a.href), 1000);
-    const fs = document.querySelector('#featured-admin .site-help:last-child'); if (fs) fs.textContent = 'site-settings.js татагдлаа (Downloads хавтас). Үүнийг вэбсайтын хавтсанд хуулаад Commit → Push хийнэ үү.';
+    document.querySelectorAll('#featured-admin .site-help:last-child,#soldout-admin .site-help:last-child').forEach(fs => fs.textContent = 'site-settings.js татагдлаа (Downloads хавтас). Үүнийг вэбсайтын хавтсанд хуулаад Commit → Push хийнэ үү.');
     setStatus('site-settings.js татагдлаа (Downloads хавтас). Үүнийг вэбсайтын хавтсанд хуулаад Commit → Push хийнэ үү.');
   }
   function importSettings(file) {
@@ -300,8 +301,86 @@ body{background:${c.background}}
   feat.addEventListener('input', e => { if (e.target.id === 'feat-q') { fq = e.target.value; drawResults(); } });
   feat.addEventListener('change', e => { if (e.target.id === 'feat-cat') { fcat = e.target.value; drawResults(); } });
 
+  /* ---------- sold out (Дууссан бараа) ---------- */
+  const soldSet = () => new Set((S.soldOut || []).map(Number));
+  const isSold = id => soldSet().has(Number(id));
+  const sx = document.createElement('style');
+  sx.textContent = `.product-image{position:relative}.sold-badge{position:absolute;top:10px;left:10px;z-index:2;background:#b42318;color:#fff;font-weight:800;font-size:12px;letter-spacing:1px;padding:5px 10px;border-radius:3px;pointer-events:none}
+.product.sold-out .product-image img{opacity:.45;filter:grayscale(.7)}.product.sold-out .add,.detail-sold .add,.add.sold{background:#9aa6ac!important;cursor:not-allowed}
+.detail-sold-note{display:inline-block;background:#b42318;color:#fff;font-weight:800;padding:6px 12px;border-radius:4px;margin:0 0 10px;letter-spacing:.5px}
+.sold-panel{margin-bottom:22px}.sold-chip{display:flex;gap:10px;align-items:center;border:1px solid #f0c9c4;background:#fff6f5;border-radius:6px;padding:8px}.sold-chip img{width:48px;height:48px;object-fit:contain;flex:none;background:#fff}.sold-chip div{flex:1;font-size:13px;line-height:1.35}
+.sold-chip button,.sold-res button{border:0;border-radius:4px;padding:8px 10px;cursor:pointer;font:inherit;font-weight:700;white-space:nowrap}.sold-chip button{background:#fff;border:1px solid #c8d1d5}
+.sold-res button.mark{background:#b42318;color:#fff}.sold-res button.unmark{background:#e3e7e9;color:#10202c}`;
+  document.head.appendChild(sx);
+  function markSold(root) {
+    if (!root) return;
+    root.querySelectorAll('article.product').forEach(card => {
+      const m = (card.querySelector('.product-image')?.getAttribute('onclick') || '').match(/openProduct\((\d+)\)/); if (!m) return;
+      const sold = isSold(m[1]);
+      card.classList.toggle('sold-out', sold);
+      card.querySelector('.sold-badge')?.remove();
+      const btn = card.querySelector('.add');
+      if (sold) { card.querySelector('.product-image').insertAdjacentHTML('afterbegin', '<span class="sold-badge">ДУУССАН</span>'); if (btn) { btn.textContent = 'Дууссан'; btn.disabled = true; } }
+    });
+  }
+  const oldRender = render;
+  render = function(...a) { oldRender(...a); markSold(document.getElementById('grid')); };
+  const featRender = renderFeaturedLures;
+  renderFeaturedLures = function() { featRender(); markSold(document.getElementById('featured-lures')); };
+  const oldOpen2 = openProduct;
+  openProduct = function(id) {
+    oldOpen2(id);
+    if (!isSold(id)) return;
+    const box = document.getElementById('detail-content'); if (!box) return;
+    box.classList.add('detail-sold');
+    box.querySelector('.price')?.insertAdjacentHTML('beforebegin', '<div class="detail-sold-note">ДУУССАН — одоогоор худалдаанд байхгүй</div>');
+    box.querySelectorAll('.add').forEach(b => { if (/Сагсанд/.test(b.textContent)) { b.textContent = 'Дууссан'; b.disabled = true; } });
+  };
+  const oldAdd = add; add = function(id) { if (isSold(id)) return openProduct(id); return oldAdd(id); };
+  const oldAddDetail2 = addDetailProduct; addDetailProduct = function() { if (isSold(detailProductId)) return; return oldAddDetail2(); };
+
+  const sold = document.createElement('div');
+  sold.className = 'admin-panel sold-panel'; sold.id = 'soldout-admin';
+  let sq = '', scat = '';
+  function drawSold() {
+    const ids = [...soldSet()];
+    const list = ids.map(id => products.find(p => Number(p.id) === id)).filter(Boolean);
+    const zero = products.filter(p => Number(p.stock) === 0 && !isSold(p.id)).length;
+    const catList = (typeof cats !== 'undefined' ? cats : ['Бүгд']).slice(1);
+    sold.innerHTML = `<div class="eyebrow">SOLD OUT</div><h2>Дууссан бараа <small style="font-size:16px;color:#5a6a72">(${list.length})</small></h2>
+      <p class="site-help">Дууссан бараа сайт дээр «ДУУССАН» тэмдэгтэй, бүдэг зурагтай харагдах ба сагсанд нэмэх боломжгүй болно. Хайгаад нэг товшилтоор тэмдэглэнэ.</p>
+      <div class="feat-search"><input id="sold-q" placeholder="Нэр, брэнд, кодоор хайх…" value="${esc(sq)}"><select id="sold-cat"><option value="">Бүх ангилал</option>${catList.map(c => `<option ${c === scat ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select></div>
+      <div class="feat-results" id="sold-results"></div>
+      <h3 style="margin:20px 0 10px">Одоо дууссан гэж тэмдэглэсэн</h3>
+      <div class="feat-results">${list.map(p => `<div class="sold-chip"><img src="${esc(p.image)}" alt="" loading="lazy"><div><b>${esc(p.name)}</b><br>${esc(p.brand)}${p.code ? ' · ' + esc(p.code) : ''}</div><button data-s="unmark" data-id="${Number(p.id)}">Буцааж нээх</button></div>`).join('') || '<p class="site-help">Дууссан бараа алга.</p>'}</div>
+      <div class="admin-actions" style="margin-top:16px">${zero ? `<button class="site-btn" data-s="zero">Үлдэгдэл 0 гэсэн ${zero} барааг дууссан болгох</button>` : ''}${list.length ? '<button class="site-btn" data-s="clear">Бүгдийг буцааж нээх</button>' : ''}<button class="site-btn primary" data-s="export">↓ Хадгалж нийтлэх файл татах (site-settings.js)</button></div>
+      <p class="site-help">Өөрчлөлт энэ browser дээр шууд харагдана. Бүх хүнд харуулахын тулд файл татаж, вэбсайтын хавтсанд хуулаад Commit → Push хийнэ.</p>`;
+    drawSoldResults();
+  }
+  function drawSoldResults() {
+    const box = sold.querySelector('#sold-results'); if (!box) return;
+    const q = sq.trim().toLowerCase();
+    if (!q && !scat) { box.innerHTML = '<p class="site-help">Хайх үг бичих эсвэл ангилал сонгоно уу.</p>'; return; }
+    const res = products.filter(p => (!scat || categoryMatches(p, scat)) && (!q || (p.name + ' ' + p.brand + ' ' + (p.code || '')).toLowerCase().includes(q))).slice(0, 60);
+    box.innerHTML = res.map(p => { const on = isSold(p.id); return `<div class="feat-res sold-res"><img src="${esc(p.image)}" alt="" loading="lazy"><div><b>${esc(p.name)}</b><br>${esc(p.brand)} · ${money(p.price)}${on ? ' · <b style="color:#b42318">Дууссан</b>' : ''}</div><button class="${on ? 'unmark' : 'mark'}" data-s="${on ? 'unmark' : 'mark'}" data-id="${Number(p.id)}">${on ? 'Буцааж нээх' : 'Дууссан'}</button></div>`; }).join('') || '<p class="site-help">Илэрц олдсонгүй.</p>';
+  }
+  function soldChanged(set) { S.soldOut = [...set]; save(); render(true); renderFeaturedLures(); drawSold(); }
+  sold.addEventListener('click', e => {
+    const t = e.target.closest('[data-s]'); if (!t) return;
+    const set = soldSet(), id = Number(t.dataset.id);
+    if (t.dataset.s === 'export') return exportSettings();
+    if (t.dataset.s === 'mark') set.add(id);
+    if (t.dataset.s === 'unmark') set.delete(id);
+    if (t.dataset.s === 'zero') { const z = products.filter(p => Number(p.stock) === 0); if (!confirm(z.length + ' барааны үлдэгдэл 0 гэж бүртгэгдсэн байна (2026-10-20-ны импорт). Бүгдийг дууссан болгох уу?')) return; z.forEach(p => set.add(Number(p.id))); }
+    if (t.dataset.s === 'clear') { if (!confirm('Бүх дууссан тэмдэглэгээг арилгах уу?')) return; set.clear(); }
+    soldChanged(set);
+  });
+  sold.addEventListener('input', e => { if (e.target.id === 'sold-q') { sq = e.target.value; drawSoldResults(); } });
+  sold.addEventListener('change', e => { if (e.target.id === 'sold-cat') { scat = e.target.value; drawSoldResults(); } });
+
   const adminSection = document.getElementById('admin');
-  if (adminSection) { adminSection.prepend(feat); adminSection.append(panel); }
+  if (adminSection) { adminSection.prepend(sold); adminSection.prepend(feat); adminSection.append(panel); }
+  drawSold(); markSold(document.getElementById('grid')); markSold(document.getElementById('featured-lures'));
   window.__featReady = true;
   draw(); drawFeat(); apply();
 })();

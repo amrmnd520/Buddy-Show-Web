@@ -88,6 +88,7 @@ body{background:${c.background}}
       if (el && admin) { admin.before(el); el.style.display = S.layout.hidden.includes(k) ? 'none' : ''; }
     }
     applyMenu();
+    if (window.__featReady) renderFeaturedLures();
   }
   const oldMenus = menus;
   menus = function() { oldMenus(); applyMenu(); };
@@ -115,7 +116,7 @@ body{background:${c.background}}
 .site-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px 22px;align-items:start}.site-grid label{display:block;font-weight:700;font-size:14px}.site-grid label>input:not([type=checkbox]):not([type=color]),.site-grid label>select,.site-grid label>textarea{display:block;width:100%;margin-top:6px;box-sizing:border-box;font:inherit;font-weight:400}
 .site-grid input[type=range]{width:100%}.site-check{display:flex!important;gap:8px;align-items:center}.site-preview{max-width:100%;max-height:120px;border:1px dashed #b8c4cb;border-radius:6px;padding:6px;background:repeating-conic-gradient(#eee 0 25%,#fff 0 50%) 0 0/16px 16px}
 .site-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:8px;border:1px solid #e3e7e9;border-radius:6px;margin-bottom:8px}.site-row input,.site-row select{flex:1 1 140px}.site-row button,.site-btn{border:1px solid #c8d1d5;background:#fff;border-radius:4px;padding:8px 12px;cursor:pointer;font:inherit}.site-btn.primary{background:#10202c;color:#fff;border-color:#10202c;font-weight:700}
-.site-status{font-size:14px;min-height:20px;margin:10px 0 0}.site-help{font-size:13px;color:#5a6a72;line-height:1.5}`;
+.site-grid input[type=color]{display:block;width:76px;height:44px;padding:3px;margin-top:6px;border:1px solid #c8d1d5;border-radius:6px;background:#fff;cursor:pointer}.site-settings{margin-top:22px}.site-status{font-size:14px;min-height:20px;margin:10px 0 0}.site-help{font-size:13px;color:#5a6a72;line-height:1.5}`;
   document.head.appendChild(css);
   let tab = 'logo';
   const TABS = [['logo','Лого'],['hero','Нүүр зураг'],['menu','Цэс'],['layout','Зохион байгуулалт'],['colors','Өнгө ба мэдэгдэл']];
@@ -216,6 +217,7 @@ body{background:${c.background}}
     const text = '/* Buddy Shop website settings, exported ' + new Date().toISOString().slice(0, 10) + '. */\nwindow.BUDDY_SITE_SETTINGS = ' + JSON.stringify(S, null, 2) + ';\n';
     const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([text], {type: 'text/javascript'})); a.download = 'site-settings.js'; a.click();
     setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+    const fs = document.querySelector('#featured-admin .site-help:last-child'); if (fs) fs.textContent = 'site-settings.js татагдлаа (Downloads хавтас). Үүнийг вэбсайтын хавтсанд хуулаад Commit → Push хийнэ үү.';
     setStatus('site-settings.js татагдлаа (Downloads хавтас). Үүнийг вэбсайтын хавтсанд хуулаад Commit → Push хийнэ үү.');
   }
   function importSettings(file) {
@@ -227,7 +229,79 @@ body{background:${c.background}}
     };
     r.readAsText(file);
   }
+  /* ---------- featured products (Онцлох бараа) ---------- */
+  const fx = document.createElement('style');
+  fx.textContent = `.feat-panel{margin-bottom:22px}.feat-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:12px;margin:12px 0 20px}
+.feat-card{border:1px solid #dde3e6;border-radius:8px;padding:10px;background:#fff;display:flex;flex-direction:column;gap:6px}.feat-card img{width:100%;height:110px;object-fit:contain;background:#fff}
+.feat-card .n{font-weight:700;font-size:14px;line-height:1.3}.feat-card .b{font-size:11px;letter-spacing:1px;color:#a75c29;font-weight:800;text-transform:uppercase}.feat-card .pr{font-weight:800}
+.feat-tools{display:flex;gap:6px}.feat-tools button{flex:1;border:1px solid #c8d1d5;background:#f4f6f7;border-radius:4px;padding:7px 0;cursor:pointer;font:inherit}.feat-tools button.del{color:#a52323}
+.feat-search{display:flex;gap:8px;flex-wrap:wrap}.feat-search input,.feat-search select{flex:1 1 200px;padding:11px;font:inherit}
+.feat-results{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:8px;margin-top:12px;max-height:520px;overflow:auto}
+.feat-res{display:flex;gap:10px;align-items:center;border:1px solid #e3e7e9;border-radius:6px;padding:8px;background:#fff}.feat-res img{width:56px;height:56px;object-fit:contain;flex:none}.feat-res div{flex:1;font-size:13px;line-height:1.35}
+.feat-res button{border:0;background:#10202c;color:#fff;border-radius:4px;padding:8px 10px;cursor:pointer;font:inherit;font-weight:700;white-space:nowrap}.feat-res button[disabled]{background:#c9d2d6;cursor:default}`;
+  document.head.appendChild(fx);
+  const featIds = () => Array.isArray(S.featured) ? S.featured : products.filter(p => p.featuredLure).map(p => p.id);
+  function applyFeatured() {
+    if (!Array.isArray(S.featured)) return;
+    const ids = new Set(S.featured.map(Number));
+    for (const p of products) p.featuredLure = ids.has(Number(p.id));
+  }
+  renderFeaturedLures = function() {
+    applyFeatured();
+    const order = featIds().map(Number);
+    const list = products.filter(p => p.featuredLure).sort((a, b) => order.indexOf(Number(a.id)) - order.indexOf(Number(b.id)));
+    document.getElementById('featured-lures').innerHTML = list.map(p => `<article class="product"><div class="product-image" role="button" tabindex="0" aria-label="${esc(p.name)} — Дэлгэрэнгүй" onclick="openProduct(${Number(p.id)})" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openProduct(${Number(p.id)})}"><img src="${esc(p.image)}" alt="${esc(p.name)}" loading="lazy"></div><div class="product-content"><div class="brand">${esc(p.brand)}</div><h3><button onclick="openProduct(${Number(p.id)})">${esc(p.name)}</button></h3><div class="price">${money(p.price)}</div><button class="add" onclick="add(${Number(p.id)})">Сагсанд нэмэх +</button></div></article>`).join('');
+  };
+  const oldEdit = edit;
+  edit = function(id, k, v) {
+    if (k === 'featuredLure') {
+      const ids = featIds().map(Number).filter(x => x !== Number(id));
+      if (v) ids.push(Number(id));
+      S.featured = ids; save(); drawFeat();
+    }
+    return oldEdit(id, k, v);
+  };
+  const feat = document.createElement('div');
+  feat.className = 'admin-panel feat-panel'; feat.id = 'featured-admin';
+  let fq = '', fcat = '';
+  function drawFeat() {
+    const ids = featIds().map(Number);
+    const chosen = ids.map(id => products.find(p => Number(p.id) === id)).filter(Boolean);
+    const catList = (typeof cats !== 'undefined' ? cats : ['Бүгд']).slice(1);
+    feat.innerHTML = `<div class="eyebrow">FEATURED PRODUCTS</div><h2>Онцлох бараа <small style="font-size:16px;color:#5a6a72">(${chosen.length})</small></h2>
+      <p class="site-help">Нүүр хуудасны «Онцлох бараа» хэсэгт харагдах бараа. ← → товчоор дарааллыг сольж, ✕ товчоор хасна. Доороос хайж шинэ бараа нэмнэ.</p>
+      <div class="feat-list">${chosen.map((p, i) => `<div class="feat-card"><img src="${esc(p.image)}" alt="" loading="lazy"><div class="b">${esc(p.brand)}</div><div class="n">${esc(p.name)}</div><div class="pr">${money(p.price)}</div>
+        <div class="feat-tools"><button data-f="left" data-i="${i}" aria-label="Өмнө нь">←</button><button data-f="right" data-i="${i}" aria-label="Дараа нь">→</button><button class="del" data-f="del" data-i="${i}" aria-label="Хасах">✕</button></div></div>`).join('') || '<p class="site-help">Онцлох бараа алга. Доороос нэмнэ үү.</p>'}</div>
+      <h3 style="margin:0 0 10px">Бараа нэмэх</h3>
+      <div class="feat-search"><input id="feat-q" placeholder="Нэр, брэнд, кодоор хайх…" value="${esc(fq)}"><select id="feat-cat"><option value="">Бүх ангилал</option>${catList.map(c => `<option ${c === fcat ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select></div>
+      <div class="feat-results" id="feat-results"></div>
+      <div class="admin-actions" style="margin-top:16px"><button class="site-btn primary" data-f="export">↓ Хадгалж нийтлэх файл татах (site-settings.js)</button></div>
+      <p class="site-help">Өөрчлөлт энэ browser дээр шууд харагдана. Бүх хүнд харуулахын тулд дээрх товчоор файл татаж, вэбсайтын хавтсанд хуулаад Commit → Push хийнэ.</p>`;
+    drawResults();
+  }
+  function drawResults() {
+    const box = feat.querySelector('#feat-results'); if (!box) return;
+    const ids = new Set(featIds().map(Number)); const q = fq.trim().toLowerCase();
+    if (!q && !fcat) { box.innerHTML = '<p class="site-help">Хайх үг бичих эсвэл ангилал сонгоно уу.</p>'; return; }
+    const res = products.filter(p => (!fcat || categoryMatches(p, fcat)) && (!q || (p.name + ' ' + p.brand + ' ' + (p.code || '')).toLowerCase().includes(q))).slice(0, 60);
+    box.innerHTML = res.map(p => `<div class="feat-res"><img src="${esc(p.image)}" alt="" loading="lazy"><div><b>${esc(p.name)}</b><br>${esc(p.brand)} · ${money(p.price)}</div><button data-f="add" data-id="${Number(p.id)}" ${ids.has(Number(p.id)) ? 'disabled' : ''}>${ids.has(Number(p.id)) ? 'Нэмсэн' : '+ Нэмэх'}</button></div>`).join('') || '<p class="site-help">Илэрц олдсонгүй.</p>';
+  }
+  function featChanged(ids) { S.featured = ids; save(); renderFeaturedLures(); drawFeat(); }
+  feat.addEventListener('click', e => {
+    const t = e.target.closest('[data-f]'); if (!t) return;
+    const ids = featIds().map(Number), i = Number(t.dataset.i);
+    if (t.dataset.f === 'export') return exportSettings();
+    if (t.dataset.f === 'add') { ids.push(Number(t.dataset.id)); return featChanged(ids); }
+    if (t.dataset.f === 'del') ids.splice(i, 1);
+    if (t.dataset.f === 'left' && i > 0) [ids[i - 1], ids[i]] = [ids[i], ids[i - 1]];
+    if (t.dataset.f === 'right' && i < ids.length - 1) [ids[i + 1], ids[i]] = [ids[i], ids[i + 1]];
+    featChanged(ids);
+  });
+  feat.addEventListener('input', e => { if (e.target.id === 'feat-q') { fq = e.target.value; drawResults(); } });
+  feat.addEventListener('change', e => { if (e.target.id === 'feat-cat') { fcat = e.target.value; drawResults(); } });
+
   const adminSection = document.getElementById('admin');
-  if (adminSection) adminSection.prepend(panel);
-  draw(); apply();
+  if (adminSection) { adminSection.prepend(feat); adminSection.append(panel); }
+  window.__featReady = true;
+  draw(); drawFeat(); apply();
 })();

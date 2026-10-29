@@ -1,0 +1,16 @@
+name = "buddy-shop-api"
+main = "src/index.js"
+compatibility_date = "2026-10-01"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "buddy-shop"
+database_id = "PASTE_DATABASE_ID_HERE"
+
+[[r2_buckets]]
+binding = "IMAGES"
+bucket_name = "buddy-shop-images"
+
+# Secrets (set with `npx wrangler secret put NAME`, never written here):
+#   USERS        = {"amarmend":"password1","bat":"password2"}
+#   TOKEN_SECRET = long random string

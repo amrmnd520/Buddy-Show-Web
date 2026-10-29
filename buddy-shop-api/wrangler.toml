@@ -5,7 +5,7 @@ compatibility_date = "2026-10-01"
 [[d1_databases]]
 binding = "DB"
 database_name = "buddy-shop"
-database_id = "PASTE_DATABASE_ID_HERE"
+database_id = "4e34d86e-9f89-423a-ade7-4f129f9f48a1"
 
 [[r2_buckets]]
 binding = "IMAGES"

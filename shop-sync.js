@@ -197,7 +197,7 @@
     if (token) {
       bar.innerHTML = `<strong>👤 ${safe(user)}</strong><span data-status></span><span style="flex:1"></span><button type="button" data-out>Гарах</button>`;
       bar.querySelector('[data-out]').onclick = () => { if (!dirtyCount() || confirm('Хадгалагдаагүй өөрчлөлт байна. Гарах уу?')) signOut(); };
-      work.forEach(el => el && (el.hidden = false));
+      work.forEach(el => el && (el.style.display = ''));
       setStatus(ready ? (dirtyCount() ? 'saving' : 'saved') : 'saving', ready ? '' : 'Ачаалж байна…');
     } else {
       bar.innerHTML = `<form data-login style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:0"><strong>Ажилтан нэвтрэх</strong><input name="u" placeholder="Нэр" autocomplete="username" required style="width:140px"><input name="p" type="password" placeholder="Нууц үг" autocomplete="current-password" required style="width:160px"><button type="submit">Нэвтрэх</button><span data-status></span></form>`;
@@ -207,7 +207,7 @@
         setStatus('saving', 'Нэвтэрч байна…');
         try { await signIn(f.u.value.trim(), f.p.value); } catch (err) { setStatus('error', err.message); }
       };
-      work.forEach(el => el && (el.hidden = true));
+      work.forEach(el => el && (el.style.display = 'none'));
       if (statusText) setStatus('error', statusText);
     }
   }

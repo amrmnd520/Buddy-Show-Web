@@ -8,6 +8,9 @@
   const KEY = 'bs_only_stock';
   const ls = (v) => { try { if (v === undefined) return localStorage.getItem(KEY); localStorage.setItem(KEY, v); } catch (e) { return null; } };
   const out = p => typeof p.erpQty === 'number' && p.erpQty <= 0;
+  // product counts are for staff only; customers see plain lists
+  const staff = () => document.body.classList.contains('staff-signed-in');
+  const n = k => (staff() ? ` (${k})` : '');
   let only = ls() === '1';
 
   const st = document.createElement('style');
@@ -35,7 +38,7 @@
     const full = products;
     const soldOut = full.filter(out).length;
     const small = label.querySelector('small');
-    if (small) small.textContent = soldOut ? `(${soldOut} дууссан)` : '';
+    if (small) small.textContent = soldOut && staff() ? `(${soldOut} дууссан)` : '';
     label.style.display = soldOut ? '' : 'none';
     const list = only ? full.filter(p => !out(p)) : [...full.filter(p => !out(p)), ...full.filter(out)];
     products = list;
@@ -43,7 +46,8 @@
     finally {
       products = full;
       const c = document.getElementById('catalog-count');
-      if (c && only && soldOut) c.textContent = c.textContent.replace(/·\s*Нийт\s*\d+/, `· ${soldOut} дууссан бараа нуугдсан`);
+      if (c && !staff()) c.textContent = c.textContent.replace(/\s*·\s*Нийт\s*\d+/, '');
+      if (c && staff() && only && soldOut) c.textContent = c.textContent.replace(/·\s*Нийт\s*\d+/, `· ${soldOut} дууссан бараа нуугдсан`);
     }
   };
   // Brand → Category → Sub-category: each list shows only what exists for the choices before it,
@@ -60,19 +64,19 @@
     const bc = new Map(); products.forEach(p => p.brand && bc.set(p.brand, (bc.get(p.brand) || 0) + 1));
     const brands = [...bc.keys()].sort((x, y) => x.localeCompare(y, 'en', { sensitivity: 'base' }));
     if (B !== 'Бүх брэнд' && !bc.has(B)) brands.unshift(B);
-    bSel.innerHTML = `<option value="Бүх брэнд">Бүх брэнд (${products.length})</option>` + brands.map(b => `<option value="${esc(b)}">${esc(b)} (${bc.get(b) || 0})</option>`).join('');
+    bSel.innerHTML = `<option value="Бүх брэнд">Бүх брэнд${n(products.length)}</option>` + brands.map(b => `<option value="${esc(b)}">${esc(b)}${n(bc.get(b) || 0)}</option>`).join('');
     bSel.value = B;
     // 2. categories that this brand has
     const list = (typeof cats !== 'undefined' ? cats : ['Бүгд']).filter(c => c !== 'Бүгд');
     const cc = list.map(c => [c, inBrand.filter(p => catOk(p, c)).length]).filter(([c, n]) => n || c === C);
-    cSel.innerHTML = `<option value="Бүгд">${B === 'Бүх брэнд' ? 'Бүх ангилал' : 'Бүх ангилал'} (${inBrand.length})</option>` + cc.map(([c, n]) => `<option value="${esc(c)}">${esc(c)} (${n})</option>`).join('');
+    cSel.innerHTML = `<option value="Бүгд">Бүх ангилал${n(inBrand.length)}</option>` + cc.map(([c, k]) => `<option value="${esc(c)}">${esc(c)}${n(k)}</option>`).join('');
     cSel.value = C;
     // 3. sub-categories inside brand + category
     const inCat = inBrand.filter(p => catOk(p, C));
     const sc = new Map(); inCat.forEach(p => subsOf(p).forEach(x => sc.set(x, (sc.get(x) || 0) + 1)));
     const subs = [...sc.keys()].sort((x, y) => x.localeCompare(y, 'mn'));
     if (S && !sc.has(S)) subs.unshift(S);
-    sSel.innerHTML = `<option value="">${C === 'Бүгд' ? 'Бүх дэд ангилал' : 'Бүх дэд ангилал'} (${inCat.length})</option>` + subs.map(x => `<option value="${esc(x)}">${esc(x)} (${sc.get(x) || 0})</option>`).join('');
+    sSel.innerHTML = `<option value="">Бүх дэд ангилал${n(inCat.length)}</option>` + subs.map(x => `<option value="${esc(x)}">${esc(x)}${n(sc.get(x) || 0)}</option>`).join('');
     sSel.value = S;
     sSel.disabled = !subs.length;
   }
@@ -84,4 +88,7 @@
 #catalog .toolbar select:disabled{opacity:.55}`;
   document.head.appendChild(lay);
   render();
+  // redraw when staff sign in or out
+  let was = staff();
+  new MutationObserver(() => { if (staff() !== was) { was = staff(); render(); } }).observe(document.body, { attributes: true, attributeFilter: ['class'] });
 })();

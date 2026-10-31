@@ -55,7 +55,8 @@ dialog.size-dlg{width:min(860px,96vw);max-height:90vh;border:0;border-radius:10p
       const anchor = box.querySelector('.color-code-label') || box.querySelector('.add[onclick*="addDetailProduct"]') || box.querySelector('.price');
       anchor ? anchor.before(pick) : box.append(pick);
     }
-    pick.innerHTML = `<div class="size-pick-label">Хэмжээ: ${esc(cur.label)}</div><div class="size-chips" role="group" aria-label="Хэмжээ">${sizes.map(s => sizeRow(p, s)).join('')}</div>`;
+    const title = p.sizeTitle || 'Хэмжээ';
+    pick.innerHTML = `<div class="size-pick-label">${esc(title)}: ${esc(cur.label)}</div><div class="size-chips" role="group" aria-label="${esc(title)}">${sizes.map(s => sizeRow(p, s)).join('')}</div>`;
     const priceEl = box.querySelector('.price'); if (priceEl && cur.price) priceEl.textContent = fmt(cur.price);
     // A sized product needs no colour-code box unless its photos carry colour codes.
     if (!p.imageColorCodes) box.querySelectorAll('.color-code-label,#detail-color-code,.detail-hint').forEach(el => { if (!el.closest('.size-pick')) el.style.display = 'none'; });
@@ -63,7 +64,7 @@ dialog.size-dlg{width:min(860px,96vw);max-height:90vh;border:0;border-radius:10p
     box.querySelectorAll('.detail-meta').forEach(el => { if (/^Код:/.test(el.textContent)) el.textContent = 'Код: ' + cur.code; });
     box.querySelector('.erp-nostock-note')?.remove();
     const out = typeof cur.qty === 'number' && cur.qty <= 0;
-    if (out) box.querySelector('.price')?.insertAdjacentHTML('beforebegin', '<div class="erp-nostock-note">Энэ хэмжээ үлдэгдэлгүй</div>');
+    if (out) box.querySelector('.price')?.insertAdjacentHTML('beforebegin', `<div class="erp-nostock-note">Энэ ${p.sizeTitle === 'Сонголт' ? 'сонголт' : 'хэмжээ'} үлдэгдэлгүй</div>`);
     box.querySelectorAll('.add').forEach(b => {
       if (!/Сагсанд|Үлдэгдэлгүй/.test(b.textContent) || b.getAttribute('onclick') === 'setDetailCover()') return;
       b.textContent = out ? 'Үлдэгдэлгүй' : 'Сагсанд нэмэх +'; b.disabled = out; b.classList.toggle('erp-nostock', out);
@@ -103,7 +104,7 @@ dialog.size-dlg{width:min(860px,96vw);max-height:90vh;border:0;border-radius:10p
     cart.forEach((item, index) => { const key = cartItemKey(item); if (!grouped.has(key)) grouped.set(key, { ...item, firstIndex: index, qty: 0 }); grouped.get(key).qty++; });
     document.getElementById('cartitems').innerHTML = grouped.size ? [...grouped.values()].map(item => {
       const p = findP(item.id); if (!p) return '';
-      return `<div class="row"><div>${item.image ? `<img class="cart-photo" src="${esc(item.image)}" alt="${esc(p.name)}">` : ''}<b>${esc(p.name)}</b>${item.size ? `<div class="cart-size">Хэмжээ: ${esc(item.size)}</div>` : ''}${item.colorCode ? `<div>Өнгөний код: ${esc(item.colorCode)}</div>` : ''}<br>${fmt(itemPrice(item))} × ${item.qty}</div><button onclick="removeCart(${item.firstIndex})">Устгах</button></div>`;
+      return `<div class="row"><div>${item.image ? `<img class="cart-photo" src="${esc(item.image)}" alt="${esc(p.name)}">` : ''}<b>${esc(p.name)}</b>${item.size ? `<div class="cart-size">${esc(p.sizeTitle || 'Хэмжээ')}: ${esc(item.size)}</div>` : ''}${item.colorCode ? `<div>Өнгөний код: ${esc(item.colorCode)}</div>` : ''}<br>${fmt(itemPrice(item))} × ${item.qty}</div><button onclick="removeCart(${item.firstIndex})">Устгах</button></div>`;
     }).join('') : 'Сагс хоосон байна.';
     document.getElementById('total').textContent = 'Нийт: ' + fmt(cart.reduce((sum, item) => sum + itemPrice(item), 0));
     document.getElementById('overlay').classList.add('show');
@@ -182,7 +183,11 @@ dialog.size-dlg{width:min(860px,96vw);max-height:90vh;border:0;border-radius:10p
     if (d === 'close') return dlg.close();
     if (d === 'change') { state.pid = null; state.rows = []; return drawDlg(); }
     if (d === 'pick') { state.pid = Number(b.dataset.pid); const x = findP(state.pid); return search(family(x.name.replace(/^.*?-\s*/, '')), false); }
-    if (d === 'clear' && p) { delete p.sizes; if (typeof refresh === 'function') refresh(); return dlg.close(); }
+    if (d === 'clear' && p) {
+      if (p.sizesPrev) { p.code = p.sizesPrev.code; p.name = p.sizesPrev.name; delete p.sizesPrev; }
+      delete p.sizes; delete p.sizeTitle;
+      if (typeof refresh === 'function') refresh(); return dlg.close();
+    }
     if (d === 'save' && p) {
       const chosen = state.rows.filter(r => r.on);
       if (!chosen.length) { state.err = 'Дор хаяж нэг хэмжээ сонгоно уу.'; return drawDlg(); }

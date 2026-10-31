@@ -7,9 +7,9 @@ compatibility_date = "2026-10-01"
 crons = ["*/15 * * * *"]
 
 [vars]
-# Cloudflare cannot call a bare IP address, so a hostname that points to the Odoo IP is used.
-# Later: create erp.buddyshop.mn (A record → 103.50.205.135) at datacom.mn and put it here.
-ODOO_URL = "http://103-50-205-135.sslip.io:9909"
+# Cloudflare cannot call a bare IP address, so a hostname is used:
+# erp.buddyshop.mn = A record → 103.50.205.135 (datacom.mn DNS)
+ODOO_URL = "http://erp.buddyshop.mn:9909"
 ODOO_DB = "erpdb"
 ODOO_LOCATION_ID = "8"   # WH/Stock (Buddy / Emart)
 ODOO_COMPANY_ID = "1"    # Buddy shop

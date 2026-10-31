@@ -56,7 +56,8 @@
   }
 
   let data = null, loading = false, err = '';
-  let q = '', sort = 'revenue', inStockOnly = true, showHidden = false, limit = 40, flash = '';
+  let q = '', sort = 'revenue', inStockOnly = true, showHidden = false, page = 0, flash = '';
+  const PER = 10;
 
   const st = document.createElement('style');
   st.textContent = `.erps-panel{margin-bottom:22px}.erps-tools{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:12px 0}
@@ -68,6 +69,8 @@
 .erps-act{display:flex;flex-direction:column;gap:6px;align-items:stretch;min-width:150px}.erps-act select{font-size:12px;padding:6px}
 .erps-act button,.erps-hint button,.erps-tools button{border:1px solid #c8d1d5;background:#fff;border-radius:4px;padding:7px 10px;cursor:pointer;font:inherit;font-size:13px;font-weight:600}
 .erps-act button.add-it{background:#203746;color:#fff;border-color:#203746}.erps-hint button{background:#1f5f3a;color:#fff;border-color:#1f5f3a;padding:4px 8px;font-size:12px}
+.erps-pager{display:flex;gap:10px;align-items:center;justify-content:center;flex-wrap:wrap;margin:14px 0 4px;font-size:13px;color:#5a6a72;font-variant-numeric:tabular-nums}
+.erps-pager button{border:1px solid #c8d1d5;background:#fff;border-radius:4px;padding:8px 14px;font:inherit;font-weight:700;cursor:pointer;color:#203746}.erps-pager button:disabled{opacity:.4;cursor:default}
 .erps-flash{background:#eef7f0;color:#1f5f3a;border-radius:4px;padding:8px 12px;font-size:13px;margin:8px 0}.erps-err{background:#fdecea;color:#b42318;border-radius:4px;padding:8px 12px;font-size:13px}
 @media(max-width:650px){.erps-row{grid-template-columns:1fr}.erps-act{flex-direction:row;flex-wrap:wrap;min-width:0}}`;
   document.head.appendChild(st);
@@ -124,7 +127,7 @@
       </div>
       ${flash ? `<div class="erps-flash">${flash}</div>` : ''}
       ${err ? `<div class="erps-err">⚠ ${esc(err)}</div>` : ''}
-      <div class="erps-list">${r.slice(0, limit).map(it => {
+      <div class="erps-list">${(() => { const pages = Math.max(1, Math.ceil(r.length / PER)); if (page >= pages) page = pages - 1; return r.slice(page * PER, page * PER + PER); })().map(it => {
         const sim = similarCodeless(it.name);
         const cat = guessCat(it.name, it.categ);
         return `<div class="erps-row ${it.hidden ? 'hidden-item' : ''}" data-key="${esc(it.key)}">
@@ -140,7 +143,7 @@
             <button type="button" data-a="${it.hidden ? 'unhide' : 'hide'}">${it.hidden ? 'Буцааж харуулах' : 'Нуух'}</button>
           </div></div>`;
       }).join('') || `<p class="site-help">${loading ? 'Ачаалж байна…' : data ? 'Санал болгох бараа алга.' : ''}</p>`}</div>
-      ${r.length > limit ? `<div class="erps-tools"><button type="button" data-a="more">Цааш харах (${r.length - limit})</button></div>` : ''}`}`;
+      ${r.length > PER ? `<div class="erps-pager"><button type="button" data-a="prev" ${page === 0 ? 'disabled' : ''}>‹ Өмнөх</button><span>${page * PER + 1}–${Math.min(r.length, page * PER + PER)} / ${r.length} · Хуудас ${page + 1} / ${Math.ceil(r.length / PER)}</span><button type="button" data-a="next" ${(page + 1) * PER >= r.length ? 'disabled' : ''}>Дараах ›</button></div>` : ''}`}`;
   }
 
   const findItem = key => data && data.items.find(it => norm(it.codes[0]) === key);
@@ -150,7 +153,7 @@
     const b = e.target.closest('[data-a]'); if (!b) return;
     const a = b.dataset.a, row = b.closest('.erps-row'), it = row && findItem(row.dataset.key);
     if (a === 'refresh') return load(true);
-    if (a === 'more') { limit += 40; return draw(); }
+    if (a === 'prev' || a === 'next') { page = Math.max(0, page + (a === 'next' ? 1 : -1)); draw(); panel.scrollIntoView({ behavior: 'smooth', block: 'start' }); return; }
     if (a === 'sizes-any') return window.openSizeEditor && window.openSizeEditor(null);
     if (!it) return;
     if (a === 'add') {
@@ -175,11 +178,11 @@
       draw();
     }
   });
-  panel.addEventListener('input', e => { if (e.target.id === 'erps-q') { q = e.target.value; limit = 40; const pos = e.target.selectionStart; draw(); const el = panel.querySelector('#erps-q'); el.focus(); el.setSelectionRange(pos, pos); } });
+  panel.addEventListener('input', e => { if (e.target.id === 'erps-q') { q = e.target.value; page = 0; const pos = e.target.selectionStart; draw(); const el = panel.querySelector('#erps-q'); el.focus(); el.setSelectionRange(pos, pos); } });
   panel.addEventListener('change', e => {
     if (e.target.id === 'erps-sort') { sort = e.target.value; draw(); }
-    if (e.target.id === 'erps-stock') { inStockOnly = e.target.checked; limit = 40; draw(); }
-    if (e.target.id === 'erps-hidden') { showHidden = e.target.checked; limit = 40; draw(); }
+    if (e.target.id === 'erps-stock') { inStockOnly = e.target.checked; page = 0; draw(); }
+    if (e.target.id === 'erps-hidden') { showHidden = e.target.checked; page = 0; draw(); }
   });
 
   window.addEventListener('sizes-saved', e => {

@@ -1,5 +1,5 @@
 /* Prices and Emart stock from the Odoo ERP (via buddy-shop-api /api/erp, refreshed every 15 min).
-   - Products are matched by their code (p.code). A row with several codes ("1623118 1623120")
+   - Products are matched by their code (p.code). A row with several codes ("1623118 | 1623120")
      adds up the stock of all of them; the price comes from the first code that has one.
    - Price and stock from the ERP always win over catalog.js and admin edits.
    - Out-of-stock products still look normal in lists. Inside the product page the order
@@ -10,13 +10,28 @@
   let erp = null;            // { CODE: [price, qty] }
   let loading = null;
 
-  const codesOf = p => String(p.code || '').trim().toUpperCase().split(/\s+/).filter(Boolean);
+  // A code may itself contain spaces ("D-COMPACT 45 06"). Several codes are separated by "|"
+  // (or ";" / ","); older rows separate them with spaces, so that is the last resort.
+  const norm = c => String(c || '').trim().toUpperCase().replace(/\s+/g, ' ');
+  const codesOf = p => {
+    const raw = norm(p.code); if (!raw) return [];
+    if (erp && erp[raw]) return [raw];
+    if (/[|;,]/.test(raw)) return raw.split(/\s*[|;,]\s*/).filter(Boolean);
+    return raw.split(' ').filter(Boolean);
+  };
   const erpQty = p => (p && typeof p.erpQty === 'number') ? p.erpQty : null;
   const noStock = p => erpQty(p) === 0;
 
   function load() {
     if (!loading) loading = fetch(API + '/api/erp').then(r => r.ok ? r.json() : null)
-      .then(d => { erp = d && d.items && Object.keys(d.items).length ? d.items : null; window.BUDDY_ERP_UPDATED = d && d.updatedAt; })
+      .then(d => {
+        erp = null;
+        if (d && d.items) for (const [k, v] of Object.entries(d.items)) {
+          const key = norm(k); erp = erp || {};
+          if (erp[key]) erp[key] = [erp[key][0] || v[0], erp[key][1] + v[1]]; else erp[key] = v.slice();
+        }
+        window.BUDDY_ERP_UPDATED = d && d.updatedAt;
+      })
       .catch(() => { erp = null; });
     return loading;
   }

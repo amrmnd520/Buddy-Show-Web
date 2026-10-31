@@ -47,7 +47,7 @@ export async function syncErp(env) {
   // 3. Compact map: CODE -> [price, qty]
   const items = {};
   for (const r of rows || []) {
-    const code = String(r.default_code || '').trim().toUpperCase();
+    const code = String(r.default_code || '').trim().toUpperCase().replace(/\s+/g, ' ');
     if (!code) continue;
     const price = Math.round(Number(r.lst_price) || 0);
     const qty = Math.max(0, Math.floor(Number(r.qty_available) || 0));

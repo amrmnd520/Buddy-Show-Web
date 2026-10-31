@@ -2,7 +2,7 @@
 // Stores products that were added, edited or deleted by staff on top of the
 // site's catalog.js, and serves product photos uploaded from the admin page.
 
-import { syncErp, getErp } from './erp.js';
+import { syncErp, getErp, syncTop, getTop, setDismissed } from './erp.js';
 
 const JSON_HEADERS = { 'content-type': 'application/json; charset=utf-8' };
 const CORS = {
@@ -159,6 +159,16 @@ export default {
       if (!user) return fail(401, 'Дахин нэвтэрнэ үү');
       if (request.method === 'GET' && path === '/api/me') return json({ user });
       if (request.method === 'POST' && path === '/api/upload') return uploadImage(request, env, url, user);
+      if (request.method === 'GET' && path === '/api/erp/top') return json(await getTop(env), 200, { 'cache-control': 'no-store' });
+      if (request.method === 'POST' && path === '/api/erp/top/refresh') {
+        try { return json({ ok: true, ...(await syncTop(env, Number(url.searchParams.get('days')) || 90)) }); }
+        catch (e) { await saveErpError(env, e); return fail(502, e.message); }
+      }
+      if (request.method === 'POST' && path === '/api/erp/dismiss') {
+        const { code, hide } = await request.json().catch(() => ({}));
+        try { return json({ ok: true, dismissed: await setDismissed(env, code, hide !== false) }); }
+        catch (e) { return fail(400, e.message); }
+      }
       if (request.method === 'POST' && path === '/api/erp/sync') {
         try { return json({ ok: true, ...(await syncErp(env)) }); }
         catch (e) { await saveErpError(env, e); return fail(502, e.message); }
@@ -179,6 +189,11 @@ export default {
 
   // Every 15 minutes: copy prices and shop stock from Odoo (see erp.js).
   async scheduled(event, env, ctx) {
+    // Daily (06:00 Ulaanbaatar): POS best sellers for the admin suggestions.
+    if (event.cron === '0 22 * * *') {
+      ctx.waitUntil(syncTop(env).then((r) => console.log('erp top', r), (e) => saveErpError(env, e)));
+      return;
+    }
     ctx.waitUntil(syncErp(env).then(
       async (r) => { console.log('erp sync', r); await env.IMAGES.delete('erp/error.json'); },
       (e) => saveErpError(env, e),

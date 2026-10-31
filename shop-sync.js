@@ -175,7 +175,7 @@
   /* ---------- admin panel UI ---------- */
   // Website settings, featured and sold-out tools are for signed-in staff only.
   const gate = document.createElement('style');
-  gate.textContent = 'body:not(.staff-signed-in) #site-settings,body:not(.staff-signed-in) #featured-admin,body:not(.staff-signed-in) #soldout-admin{display:none!important}';
+  gate.textContent = 'body:not(.staff-signed-in) #site-settings,body:not(.staff-signed-in) #featured-admin,body:not(.staff-signed-in) #soldout-admin,body:not(.staff-signed-in) #erp-suggest-admin{display:none!important}';
   document.head.appendChild(gate);
   const panel = document.querySelector('#admin .admin-panel');
   const bar = document.createElement('div');

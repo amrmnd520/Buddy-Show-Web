@@ -4,7 +4,7 @@ compatibility_date = "2026-10-01"
 
 # Odoo ERP → prices and Emart (WH/Stock) stock, every 15 minutes
 [triggers]
-crons = ["*/15 * * * *"]
+crons = ["*/15 * * * *", "0 22 * * *"]   # every 15 min: price/stock · daily 06:00 UB: best sellers
 
 [vars]
 # Cloudflare cannot call a bare IP address, so a hostname is used:

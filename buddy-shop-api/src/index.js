@@ -4,6 +4,7 @@
 
 import { syncErp, getErp, getCatalog, syncTop, getTop, setDismissed } from './erp.js';
 import { track, stats, prune } from './stats.js';
+import { createOrder, listOrders, updateOrder } from './orders.js';
 import { customerId, requestCode, verifyCode, passwordLogin, getAccount, updateAccount, deleteAccount, listCustomers, pruneCodes } from './customers.js';
 
 const JSON_HEADERS = { 'content-type': 'application/json; charset=utf-8' };
@@ -158,6 +159,11 @@ export default {
         return json({ updatedAt: d.updatedAt, count: d.count, ms: d.ms, lastError: e ? JSON.parse(await e.text()) : null }, 200, { 'cache-control': 'no-store' });
       }
 
+      // ---- orders from the website cart (signed-in customer optional) ----
+      if (request.method === 'POST' && path === '/api/orders') {
+        const r = await createOrder(request, env, await customerId(request, env));
+        return json(r[1], r[0], { 'cache-control': 'no-store' });
+      }
       // ---- customer accounts (email code sign-in) ----
       if (path.startsWith('/api/account')) {
         const out = (r) => json(r[1], r[0], { 'cache-control': 'no-store' });
@@ -178,6 +184,9 @@ export default {
       if (!user) return fail(401, 'Дахин нэвтэрнэ үү');
       if (request.method === 'GET' && path === '/api/me') return json({ user });
       if (request.method === 'POST' && path === '/api/upload') return uploadImage(request, env, url, user);
+      if (request.method === 'GET' && path === '/api/orders') return json(await listOrders(env, url), 200, { 'cache-control': 'no-store' });
+      const om = path.match(/^\/api\/orders\/(\d+)$/);
+      if (om && request.method === 'PUT') { const r = await updateOrder(request, env, Number(om[1]), user); return json(r[1], r[0]); }
       if (request.method === 'GET' && path === '/api/customers') return json({ items: await listCustomers(env) }, 200, { 'cache-control': 'no-store' });
       if (request.method === 'GET' && path === '/api/stats') return json(await stats(env, url.searchParams.get('days')), 200, { 'cache-control': 'no-store' });
       if (request.method === 'GET' && path === '/api/erp/catalog') {

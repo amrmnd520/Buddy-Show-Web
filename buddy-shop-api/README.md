@@ -99,3 +99,10 @@ npx wrangler deploy
 - `GET /api/customers` (staff token): list for Admin → «Бүртгэлтэй хэрэглэгчид».
 - Tables `customers`, `login_codes`, `rate_limits`, `orders` are created automatically in D1.
 - Secret: `npx wrangler secret put RESEND_API_KEY`.
+
+## Orders (from the website cart)
+
+- `POST /api/orders` (customer token optional): items, name, phone, email, delivery|pickup, address, note → order number `BS1001…`.
+  New-order email to info@buddyshop.mn (or `ORDER_NOTIFY`), Telegram if `TELEGRAM_BOT_TOKEN` + `TELEGRAM_CHAT_ID` are set, confirmation email to the customer.
+- `GET /api/orders`, `PUT /api/orders/:id {status, staffNote}` (staff): Admin → «Захиалгууд».
+  Statuses: new, confirmed, paid, shipping, done, cancelled. Prices are the ones shown on the site; staff confirm before payment.

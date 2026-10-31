@@ -1,3 +1,4 @@
+import { ensureOrders, orderView } from './orders.js';
 // Customer accounts for the Buddy Shop website (Cloudflare D1).
 // Sign-in is by email: the customer types their address, we email a 6-digit code
 // (via Resend, from info@buddyshop.mn), they type it back and get a token that
@@ -121,7 +122,7 @@ function profile(row, orders = []) {
   return {
     email: row.email, hasPassword: !!row.pass_hash, name: row.name || '', phone: row.phone || '', address: row.address || '', addr: parseObj(row.addr),
     wishlist: parseList(row.wishlist), cart: parseList(row.cart), createdAt: row.created_at,
-    orders: orders.map((o) => ({ id: o.id, createdAt: o.created_at, status: o.status, total: o.total, items: parseList(o.items), note: o.note || '' })),
+    orders: orders.map(orderView),
   };
 }
 
@@ -218,6 +219,7 @@ export async function getAccount(env, id) {
   await ensure(env);
   const c = await env.DB.prepare('SELECT * FROM customers WHERE id = ?1').bind(id).first();
   if (!c) return [401, { error: 'Дахин нэвтэрнэ үү' }];
+  await ensureOrders(env);
   const { results } = await env.DB.prepare('SELECT * FROM orders WHERE customer_id = ?1 ORDER BY created_at DESC LIMIT 100').bind(id).all();
   return [200, profile(c, results || [])];
 }

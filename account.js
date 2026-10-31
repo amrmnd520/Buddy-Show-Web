@@ -52,6 +52,7 @@
 .acc-item .t{flex:1;min-width:0;font-size:14px}.acc-item .t b{display:block;cursor:pointer}.acc-item .t small{color:#5a6a72}
 .acc-empty{color:#5a6a72;font-size:14px;padding:14px 0;line-height:1.5}
 .acc-foot{display:flex;justify-content:space-between;gap:10px;margin-top:18px;font-size:13px}
+.acc-st{font-size:12px;font-weight:700;border-radius:10px;padding:2px 8px;background:#eef3f6;color:#203746;white-space:nowrap}.acc-st.st-new{background:#fff4e5;color:#8a5300}.acc-st.st-done{background:#eef7f0;color:#1f5f3a}.acc-st.st-cancelled{background:#fdecea;color:#b42318}
 .acc-order{border:1px solid #e3e7e9;border-radius:8px;padding:10px 12px;margin-bottom:10px;font-size:14px}
 .acc-heart{margin-top:8px;width:100%;background:#fff;border:1px solid #cfd6da;color:var(--ink,#10202c);border-radius:6px;padding:11px;font-weight:700;cursor:pointer}
 .acc-heart.on{border-color:var(--orange,#d77a35);color:var(--orange,#d77a35)}
@@ -170,9 +171,11 @@
             <button class="acc-link" data-unsave="${p.id}">Хасах</button></div>`).join('')
           : '<div class="acc-empty">Хадгалсан бараа алга. Барааны хуудсан дээрх «♡ Хадгалах» товчийг дарж хадгална.</div>';
       } else {
-        h += a.orders.length ? a.orders.map(o => `<div class="acc-order"><b>#${o.id}</b> · ${dt(o.createdAt)} · ${esc(o.status)} · <b>${fmt(o.total)}</b>
-            <div style="color:#5a6a72;font-size:13px;margin-top:4px">${o.items.map(i => esc(i.name || ('#' + i.id)) + (i.qty > 1 ? ' ×' + i.qty : '')).join(', ')}</div></div>`).join('')
-          : '<div class="acc-empty">Одоогоор захиалга алга. Онлайн захиалга, төлбөр нээгдмэгц таны захиалгууд энд харагдана.</div>';
+        h += a.orders.length ? a.orders.map(o => `<div class="acc-order"><div style="display:flex;justify-content:space-between;gap:8px"><b>${esc(o.number || '#' + o.id)}</b><span class="acc-st st-${esc(o.status)}">${esc(o.statusText || o.status)}</span></div>
+            <div style="color:#5a6a72;font-size:12px;margin:2px 0 6px">${dt(o.createdAt)} · ${o.delivery === 'pickup' ? 'Дэлгүүрээс авна' : 'Хүргэлтээр'}</div>
+            ${o.items.map(i => `<div style="font-size:13px;display:flex;justify-content:space-between;gap:10px"><span>${esc(i.name || ('#' + i.id))}${i.size ? ' (' + esc(i.size) + ')' : ''}</span><span style="white-space:nowrap">${fmt(i.price)} × ${i.qty}</span></div>`).join('')}
+            <div style="text-align:right;font-weight:800;margin-top:6px">${fmt(o.total)}</div></div>`).join('')
+          : '<div class="acc-empty">Одоогоор захиалга алга. Сагснаас «Захиалга өгөх» дарж захиалахад энд харагдана.</div>';
       }
       h += `<div class="acc-foot"><button class="acc-link" data-a="logout">Гарах</button><button class="acc-link" data-a="delete" style="color:#b42318">Бүртгэл устгах</button></div>`;
     }
@@ -305,6 +308,20 @@
   lastCart = JSON.stringify(slim(cartNow() || []));
   setInterval(() => saveCart(false), 1200);
   addEventListener('pagehide', () => saveCart(false));
+
+  // ---------- shared with checkout.js ----------
+  window.BuddyAccount = {
+    get: () => account,
+    open: (note) => open(note),
+    reload: () => call('/api/account').then(a => { account = a; paintButton(); return a; }),
+    save: (data) => call('/api/account', { method: 'PUT', body: JSON.stringify(data) }).then(a => { account = a; paintButton(); return a; }),
+    token: () => ls(TK) || '',
+    addrFields, readAddr, districtField,
+    onChange: (fn) => listeners.push(fn),
+  };
+  const listeners = [];
+  const notify = () => listeners.forEach(fn => { try { fn(account); } catch (e) {} });
+  setInterval(() => { const k = account ? account.email : ''; if (k !== notify.k) { notify.k = k; notify(); } }, 700);
 
   // ---------- start ----------
   paintButton();

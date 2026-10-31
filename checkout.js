@@ -30,6 +30,10 @@
 .co-ok{text-align:center;padding:10px 0}.co-ok .big{font-size:44px}.co-ok h3{margin:6px 0}.co-ok p{color:#5a6a72;line-height:1.5;font-size:14px}
 .co-back{background:none;border:0;padding:0;color:var(--blue,#203746);text-decoration:underline;cursor:pointer;font:inherit;font-size:13px;margin-bottom:6px}
 .co-sum{font-size:13px;color:#5a6a72;margin:4px 0 0}
+.co-which{display:grid;gap:8px;margin-top:10px}
+.co-which label{margin:0;border:1px solid #cfd6da;border-radius:6px;padding:10px;cursor:pointer;display:flex;gap:10px;align-items:flex-start;font-weight:400}
+.co-which input{width:auto;margin-top:3px}.co-which span{display:flex;flex-direction:column;gap:2px}.co-which small{color:#5a6a72;font-size:13px;line-height:1.4}
+.co-which label:has(input:checked){border-color:var(--orange,#d77a35);background:#fff7f0}
 .co-check{display:flex!important;gap:8px;align-items:center;font-weight:400!important}.co-check input{width:auto}`;
   document.head.appendChild(st);
 
@@ -77,9 +81,11 @@
     }
     // checkout form
     const f = form || {
-      name: a ? a.name : '', phone: a ? a.phone : '', email: a ? a.email : '', delivery: 'delivery', note: '', save: true,
+      name: a ? a.name : '', phone: a ? a.phone : '', email: a ? a.email : '', delivery: 'delivery', note: '', save: false,
     };
-    const addrSrc = form && form.addr ? { addr: form.addr } : (a || { addr: {} });
+    const saved = savedAddr(a);
+    const which = saved ? ((form && form.which) || 'saved') : 'new';
+    const newSrc = { addr: form && form.which === 'new' && form.addr ? form.addr : (saved ? {} : ((a && a.addr) || {})) };
     area.innerHTML = `<button class="co-back" data-co="back">← Сагс руу буцах</button>
       <h3 style="margin:4px 0 0">Захиалга өгөх</h3>
       <p class="co-sum">${l.reduce((s, i) => s + i.qty, 0)} бараа · Нийт <b>${fmt(total(l))}</b></p>
@@ -92,8 +98,12 @@
         <div class="co-sec">Хүлээн авах</div>
         <div class="co-ways"><label><input type="radio" name="co-way" value="delivery" ${f.delivery !== 'pickup' ? 'checked' : ''}> 🚚 Хүргэлтээр</label>
           <label><input type="radio" name="co-way" value="pickup" ${f.delivery === 'pickup' ? 'checked' : ''}> 🏬 Дэлгүүрээс авах</label></div>
-        <div id="co-addr" style="${f.delivery === 'pickup' ? 'display:none' : ''}">${acc() ? acc().addrFields(addrSrc) : ''}
-          ${a ? `<label class="co-check"><input type="checkbox" id="co-save" ${f.save ? 'checked' : ''}> Энэ хаягийг бүртгэлдээ хадгалах</label>` : ''}</div>
+        <div id="co-addr" style="${f.delivery === 'pickup' ? 'display:none' : ''}">
+          ${saved ? `<div class="co-which">
+            <label><input type="radio" name="co-which" value="saved" ${which === 'saved' ? 'checked' : ''}><span><b>📍 Бүртгэлтэй хаяг</b><small>${esc(a.address)}</small></span></label>
+            <label><input type="radio" name="co-which" value="new" ${which === 'new' ? 'checked' : ''}><span><b>➕ Шинэ хаяг</b><small>Ажил, найзынх гэх мэт өөр хаяг руу хүргүүлэх</small></span></label></div>` : ''}
+          <div id="co-new" style="${which === 'saved' ? 'display:none' : ''}">${acc() ? acc().addrFields(newSrc) : ''}
+            ${a ? `<label class="co-check"><input type="checkbox" id="co-save" ${(saved ? f.save : true) ? 'checked' : ''}> ${saved ? 'Энэ хаягийг үндсэн хаягаа болгож хадгалах' : 'Энэ хаягийг бүртгэлдээ хадгалах'}</label>` : ''}</div></div>
         <label for="co-note">Захиалгын тайлбар</label><textarea id="co-note" maxlength="500" placeholder="Хүргэлтийн цаг, бусад хүсэлт">${esc(f.note)}</textarea>
         ${err ? `<div class="co-err">${esc(err)}</div>` : ''}
         <button class="co-go" ${busy ? 'disabled' : ''}>${busy ? 'Илгээж байна…' : `Захиалга илгээх · ${fmt(total(l))}`}</button>
@@ -104,11 +114,16 @@
   function read() {
     const g = id => (area.querySelector('#' + id) || {}).value || '';
     const way = area.querySelector('input[name="co-way"]:checked');
+    const a = acc() && acc().get();
+    const w = area.querySelector('input[name="co-which"]:checked');
+    const which = savedAddr(a) && w ? w.value : 'new';
     return {
       name: g('co-name').trim(), phone: g('co-phone').trim(), email: g('co-email').trim(), note: g('co-note').trim(),
-      delivery: way ? way.value : 'delivery', addr: acc() ? acc().readAddr(area) : {}, save: !!area.querySelector('#co-save')?.checked,
+      delivery: way ? way.value : 'delivery', which, save: !!area.querySelector('#co-save')?.checked,
+      addr: which === 'saved' ? { ...a.addr } : (acc() && area.querySelector('#co-new') ? acc().readAddr(area.querySelector('#co-new')) : {}),
     };
   }
+  function savedAddr(a) { const x = a && a.addr; return !!(x && (x.district || x.building || x.complex) && a.address); }
   function addrLine(x) {
     const num = (v, w) => (v ? (/^\d+$/.test(v) ? `${v}-р ${w}` : `${v} ${w}`) : '');
     const parts = [x.city, x.district, num(x.khoroo, x.city && x.city !== 'Улаанбаатар' ? 'баг' : 'хороо'), x.complex,
@@ -125,6 +140,7 @@
     else if (a === 'close') { view = 'cart'; done = null; typeof hideCart === 'function' && hideCart(); }
   });
   area.addEventListener('change', e => {
+    if (e.target.name === 'co-which') area.querySelector('#co-new').style.display = e.target.value === 'saved' ? 'none' : '';
     if (e.target.name === 'co-way') area.querySelector('#co-addr').style.display = e.target.value === 'pickup' ? 'none' : '';
     if (e.target.id === 'acc-a-city' && acc()) {
       const w = area.querySelector('#acc-a-dwrap'); if (w) w.innerHTML = acc().districtField(e.target.value, '');
@@ -152,7 +168,7 @@
         const upd = {};
         if (!a.name && v.name) upd.name = v.name;
         if (v.phone && v.phone !== a.phone) upd.phone = v.phone;
-        if (v.save && v.delivery === 'delivery') upd.addr = v.addr;
+        if (v.save && v.delivery === 'delivery' && v.which === 'new') upd.addr = v.addr;
         (Object.keys(upd).length ? acc().save(upd) : acc().reload()).catch(() => {});
       }
     } catch (ex) { err = ex.message; }

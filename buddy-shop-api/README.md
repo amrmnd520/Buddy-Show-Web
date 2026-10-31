@@ -93,7 +93,8 @@ npx wrangler deploy
 ## Customer accounts (email code sign-in)
 
 - `POST /api/account/code {email}` emails a 6-digit code (Resend, from info@buddyshop.mn; valid 10 min, 5 tries; 1/min and 6/hour per email, 12/hour per IP).
-- `POST /api/account/verify {email, code}` → `{token, account}`; token keeps the customer signed in for 90 days.
+- `POST /api/account/verify {email, code}` → `{token, account}`; token keeps the customer signed in for 90 days. Used to register and to reset a forgotten password.
+- `POST /api/account/login {email, password}` → `{token, account}` (10 tries / 15 min per email). Passwords are stored as PBKDF2-SHA256 (100k iterations, random salt); set with `PUT /api/account {password}`.
 - `GET / PUT / DELETE /api/account` (customer token): name, phone, address, wishlist, cart, orders.
 - `GET /api/customers` (staff token): list for Admin → «Бүртгэлтэй хэрэглэгчид».
 - Tables `customers`, `login_codes`, `rate_limits`, `orders` are created automatically in D1.

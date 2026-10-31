@@ -4,7 +4,7 @@
 
 import { syncErp, getErp, getCatalog, syncTop, getTop, setDismissed } from './erp.js';
 import { track, stats, prune } from './stats.js';
-import { customerId, requestCode, verifyCode, getAccount, updateAccount, deleteAccount, listCustomers, pruneCodes } from './customers.js';
+import { customerId, requestCode, verifyCode, passwordLogin, getAccount, updateAccount, deleteAccount, listCustomers, pruneCodes } from './customers.js';
 
 const JSON_HEADERS = { 'content-type': 'application/json; charset=utf-8' };
 const CORS = {
@@ -165,6 +165,7 @@ export default {
           try { return out(await requestCode(request, env)); } catch (e) { return fail(502, e.message); }
         }
         if (request.method === 'POST' && path === '/api/account/verify') return out(await verifyCode(request, env));
+        if (request.method === 'POST' && path === '/api/account/login') return out(await passwordLogin(request, env));
         const cid = await customerId(request, env);
         if (!cid) return fail(401, 'Дахин нэвтэрнэ үү');
         if (path === '/api/account' && request.method === 'GET') return out(await getAccount(env, cid));

@@ -35,8 +35,29 @@ async function ensure(env) {
       items TEXT NOT NULL DEFAULT '[]', note TEXT)`),
     env.DB.prepare('CREATE INDEX IF NOT EXISTS orders_customer ON orders(customer_id, created_at)'),
   ]);
+  const cols = await env.DB.prepare('PRAGMA table_info(customers)').all();
+  if (!(cols.results || []).some((c) => c.name === 'pass_hash')) {
+    await env.DB.prepare('ALTER TABLE customers ADD COLUMN pass_hash TEXT').run();
+  }
   ready = true;
 }
+
+// ---------- passwords (PBKDF2-SHA256, random salt per customer) ----------
+const PBKDF2_ITER = 100000; // Cloudflare Workers maximum
+async function hashPassword(pw, saltB64) {
+  const salt = saltB64 ? Uint8Array.from(atob(saltB64), (c) => c.charCodeAt(0)) : crypto.getRandomValues(new Uint8Array(16));
+  const key = await crypto.subtle.importKey('raw', enc.encode(pw), 'PBKDF2', false, ['deriveBits']);
+  const bits = await crypto.subtle.deriveBits({ name: 'PBKDF2', hash: 'SHA-256', salt, iterations: PBKDF2_ITER }, key, 256);
+  const b64 = (u) => btoa(String.fromCharCode(...new Uint8Array(u)));
+  return `pbkdf2$${PBKDF2_ITER}$${b64(salt)}$${b64(bits)}`;
+}
+async function checkPassword(pw, stored) {
+  const [, , salt] = String(stored || '').split('$');
+  if (!salt) return false;
+  return same(await hashPassword(pw, salt), stored);
+}
+const passProblem = (pw) => (typeof pw !== 'string' || pw.length < 8 ? 'Нууц үг дор хаяж 8 тэмдэгт байна'
+  : pw.length > 200 ? 'Нууц үг хэт урт байна' : null);
 
 // ---------- helpers ----------
 const b64url = (buf) => btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
@@ -83,7 +104,7 @@ async function allow(env, key, limit, windowMs) {
 function parseList(s) { try { const v = JSON.parse(s || '[]'); return Array.isArray(v) ? v : []; } catch { return []; } }
 function profile(row, orders = []) {
   return {
-    email: row.email, name: row.name || '', phone: row.phone || '', address: row.address || '',
+    email: row.email, hasPassword: !!row.pass_hash, name: row.name || '', phone: row.phone || '', address: row.address || '',
     wishlist: parseList(row.wishlist), cart: parseList(row.cart), createdAt: row.created_at,
     orders: orders.map((o) => ({ id: o.id, createdAt: o.created_at, status: o.status, total: o.total, items: parseList(o.items), note: o.note || '' })),
   };
@@ -157,6 +178,27 @@ export async function verifyCode(request, env) {
   return [200, { token: await makeToken(env, c.id), account: profile(c), isNew: c.logins === 1 }];
 }
 
+export async function passwordLogin(request, env) {
+  await ensure(env);
+  const { email: raw, password } = await request.json().catch(() => ({}));
+  const email = cleanEmail(raw);
+  if (!validEmail(email) || typeof password !== 'string' || !password) return [400, { error: 'Имэйл, нууц үгээ оруулна уу' }];
+  const ip = request.headers.get('cf-connecting-ip') || 'x';
+  const ipKey = 'pw-ip:' + (await sha(ip + secret(env))).slice(0, 16);
+  if (!(await allow(env, 'pw:' + email, 10, 900e3)) || !(await allow(env, ipKey, 40, 3600e3))) {
+    return [429, { error: 'Хэт олон оролдлого. 15 минутын дараа дахин оролдох эсвэл «Нууц үгээ мартсан» дээр дарна уу.' }];
+  }
+  const c = await env.DB.prepare('SELECT * FROM customers WHERE email = ?1').bind(email).first();
+  if (c && !c.pass_hash) return [400, { error: 'Энэ бүртгэлд нууц үг тохируулаагүй байна. «Нууц үгээ мартсан уу?» дээр дарж имэйлээр код аваад нууц үгээ зохионо уу.' }];
+  if (!c || !(await checkPassword(password, c.pass_hash))) {
+    await new Promise((r) => setTimeout(r, 500));
+    return [400, { error: 'Имэйл эсвэл нууц үг буруу байна' }];
+  }
+  const now = new Date().toISOString();
+  await env.DB.prepare('UPDATE customers SET last_login = ?1, logins = logins + 1 WHERE id = ?2').bind(now, c.id).run();
+  return [200, { token: await makeToken(env, c.id), account: profile(c) }];
+}
+
 export async function getAccount(env, id) {
   await ensure(env);
   const c = await env.DB.prepare('SELECT * FROM customers WHERE id = ?1').bind(id).first();
@@ -185,6 +227,11 @@ export async function updateAccount(request, env, id) {
       return o;
     });
     put('cart', JSON.stringify(cart));
+  }
+  if ('password' in b) {
+    const bad = passProblem(b.password);
+    if (bad) return [400, { error: bad }];
+    put('pass_hash', await hashPassword(b.password));
   }
   if (!sets.length) return [400, { error: 'Өөрчлөх зүйл алга' }];
   vals.push(id);

@@ -1,5 +1,6 @@
 /* Customer accounts on the Buddy Shop website.
-   - "Нэвтрэх" button in the header → email → 6-digit code from info@buddyshop.mn → signed in for 90 days.
+   - "Нэвтрэх": email + password. New customers register with an email code (from info@buddyshop.mn)
+     and then choose a password; "Нууц үгээ мартсан уу?" sends a code to set a new one. Signed in for 90 days.
    - "Миний бүртгэл": name, phone, delivery address; saved products (♡); my orders.
    - The cart is kept in this browser for everyone, and in the account when signed in,
      so it follows the customer to another phone or computer.
@@ -12,7 +13,7 @@
   const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const fmt = n => (typeof money === 'function' ? money(n) : Number(n || 0).toLocaleString('en-US') + '₮');
   const dt = s => s ? String(s).slice(0, 10).replace(/-/g, '.') : '';
-  let account = null, step = 'email', email = '', busy = false, msg = '', msgOk = false, tab = 'info', lastCart = '';
+  let account = null, step = 'login', mode = 'new', email = '', busy = false, msg = '', msgOk = false, tab = 'info', lastCart = '';
 
   async function call(path, opts = {}) {
     const headers = { 'content-type': 'application/json' };
@@ -78,7 +79,7 @@
 
   function open(note) {
     msg = note || ''; msgOk = !!note;
-    if (account) step = 'account'; else if (step === 'account') step = 'email';
+    if (account) { if (step !== 'setpass') step = 'account'; } else if (step === 'account' || step === 'setpass') step = 'login';
     draw(); modal.classList.add('open');
     setTimeout(() => box.querySelector('input')?.focus(), 30);
   }
@@ -87,11 +88,27 @@
 
   function draw() {
     let h = '<button class="acc-x" aria-label="Хаах" data-a="close">×</button>';
-    if (step === 'email') {
-      h += `<h2>Нэвтрэх / Бүртгүүлэх</h2><p class="sub">Имэйл хаягаа оруулбал 6 оронтой код илгээнэ. Нууц үг шаардлагагүй — шинэ хэрэглэгч бол автоматаар бүртгэгдэнэ.</p>
-        <form data-f="email"><label for="acc-email">Имэйл</label><input id="acc-email" type="email" autocomplete="email" required value="${esc(email)}" placeholder="name@gmail.com">
+    if (step === 'login') {
+      h += `<h2>Нэвтрэх</h2><p class="sub">Имэйл хаяг, нууц үгээрээ нэвтэрнэ үү.</p>
+        <form data-f="login"><label for="acc-email">Имэйл</label><input id="acc-email" type="email" autocomplete="username" required value="${esc(email)}" placeholder="name@gmail.com">
+        <label for="acc-pass">Нууц үг</label><input id="acc-pass" type="password" autocomplete="current-password" required>
+        <button class="acc-go" ${busy ? 'disabled' : ''}>${busy ? 'Шалгаж байна…' : 'Нэвтрэх'}</button></form>${message()}
+        <div class="acc-foot"><button class="acc-link" data-a="forgot">Нууц үгээ мартсан уу?</button><button class="acc-link" data-a="register"><b>Шинээр бүртгүүлэх</b></button></div>`;
+    } else if (step === 'email') {
+      h += mode === 'forgot'
+        ? `<h2>Нууц үг сэргээх</h2><p class="sub">Бүртгэлтэй имэйлээ оруулбал 6 оронтой код илгээнэ. Кодоор нэвтрээд шинэ нууц үгээ зохионо.</p>`
+        : `<h2>Шинээр бүртгүүлэх</h2><p class="sub">Имэйлээ оруулбал баталгаажуулах 6 оронтой код илгээнэ. Дараа нь нууц үгээ зохионо.</p>`;
+      h += `<form data-f="email"><label for="acc-email">Имэйл</label><input id="acc-email" type="email" autocomplete="email" required value="${esc(email)}" placeholder="name@gmail.com">
         <button class="acc-go" ${busy ? 'disabled' : ''}>${busy ? 'Илгээж байна…' : 'Код авах'}</button></form>${message()}
-        <p class="sub" style="margin:16px 0 0;font-size:12px">Бүртгүүлснээр таны имэйл, оруулсан хаяг утас зөвхөн захиалга, хүргэлтэд ашиглагдана. Бүртгэлээ хүссэн үедээ устгаж болно.</p>`;
+        <div class="acc-foot"><button class="acc-link" data-a="tologin">← Нэвтрэх</button></div>
+        <p class="sub" style="margin:16px 0 0;font-size:12px">Таны имэйл, оруулсан хаяг утас зөвхөн захиалга, хүргэлтэд ашиглагдана. Бүртгэлээ хүссэн үедээ устгаж болно.</p>`;
+    } else if (step === 'setpass') {
+      h += `<h2>${account && account.hasPassword ? 'Шинэ нууц үг' : 'Нууц үгээ зохионо уу'}</h2><p class="sub">${esc(account ? account.email : '')} — дараа нь энэ имэйл, нууц үгээрээ нэвтэрнэ. Дор хаяж 8 тэмдэгт.</p>
+        <form data-f="setpass"><input type="email" autocomplete="username" value="${esc(account ? account.email : '')}" hidden>
+        <label for="acc-new">Нууц үг</label><input id="acc-new" type="password" autocomplete="new-password" minlength="8" required>
+        <label for="acc-new2">Нууц үг давтах</label><input id="acc-new2" type="password" autocomplete="new-password" minlength="8" required>
+        <button class="acc-go" ${busy ? 'disabled' : ''}>${busy ? 'Хадгалж байна…' : 'Нууц үг хадгалах'}</button></form>${message()}
+        ${account && account.hasPassword ? '<div class="acc-foot"><button class="acc-link" data-a="toaccount">← Буцах</button></div>' : ''}`;
     } else if (step === 'code') {
       h += `<h2>Кодоо оруулна уу</h2><p class="sub"><b>${esc(email)}</b> хаяг руу код илгээлээ. Ирэхгүй бол Spam/Promotions хавтсаа шалгаарай.</p>
         <form data-f="code"><input id="acc-code" class="code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" required placeholder="••••••">
@@ -106,7 +123,8 @@
         h += `<form data-f="profile"><label for="acc-name">Нэр</label><input id="acc-name" autocomplete="name" maxlength="80" value="${esc(a.name)}">
           <label for="acc-phone">Утас</label><input id="acc-phone" type="tel" autocomplete="tel" maxlength="20" value="${esc(a.phone)}" placeholder="9911xxxx">
           <label for="acc-addr">Хүргэлтийн хаяг</label><textarea id="acc-addr" autocomplete="street-address" maxlength="400" placeholder="Дүүрэг, хороо, байр, орц, тоот">${esc(a.address)}</textarea>
-          <button class="acc-go" ${busy ? 'disabled' : ''}>${busy ? 'Хадгалж байна…' : 'Хадгалах'}</button></form>${message()}`;
+          <button class="acc-go" ${busy ? 'disabled' : ''}>${busy ? 'Хадгалж байна…' : 'Хадгалах'}</button></form>${message()}
+          <div class="acc-foot"><button class="acc-link" data-a="setpass">${a.hasPassword ? 'Нууц үг солих' : 'Нууц үг тохируулах'}</button></div>`;
       } else if (tab === 'saved') {
         const list = a.wishlist.map(id => (typeof products !== 'undefined' ? products : []).find(p => Number(p.id) === Number(id))).filter(Boolean);
         h += list.length ? list.map(p => `<div class="acc-item"><img src="${esc(p.image)}" alt="" loading="lazy"><div class="t"><b data-open="${p.id}">${esc(p.name)}</b><small>${esc(p.brand || '')} · ${fmt(p.price)}</small></div>
@@ -127,20 +145,30 @@
     const f = e.target.dataset.f;
     if (busy) return;
     const val = sel => (e.target.querySelector(sel) || {}).value || '';
-    const v = { email: val('#acc-email'), code: val('#acc-code'), name: val('#acc-name'), phone: val('#acc-phone'), address: val('#acc-addr') };
-    if (f === 'email') email = v.email.trim().toLowerCase();
+    const v = { pass: val('#acc-pass'), new1: val('#acc-new'), new2: val('#acc-new2'), email: val('#acc-email'), code: val('#acc-code'), name: val('#acc-name'), phone: val('#acc-phone'), address: val('#acc-addr') };
+    if (f === 'email' || f === 'login') email = v.email.trim().toLowerCase();
+    if (f === 'setpass' && v.new1 !== v.new2) { msg = 'Нууц үг хоорондоо таарахгүй байна'; msgOk = false; draw(); return; }
     if (f === 'profile' && account) Object.assign(account, { name: v.name, phone: v.phone, address: v.address });
     busy = true; msg = ''; draw();
     try {
-      if (f === 'email') {
+      if (f === 'login') {
+        const d = await call('/api/account/login', { method: 'POST', body: JSON.stringify({ email, password: v.pass }) });
+        ls(TK, d.token); account = d.account; step = 'account'; tab = account.phone ? 'saved' : 'info';
+        mergeCart(); paintButton(); paintHeart();
+      } else if (f === 'setpass') {
+        const first = !account.hasPassword;
+        account = await call('/api/account', { method: 'PUT', body: JSON.stringify({ password: v.new1 }) });
+        step = 'account'; tab = 'info'; msgOk = true;
+        msg = first && !account.phone ? 'Нууц үг хадгалагдлаа. Одоо хүргэлтэд хэрэгтэй нэр, утас, хаягаа оруулаарай.' : 'Нууц үг хадгалагдлаа';
+      } else if (f === 'email') {
         await call('/api/account/code', { method: 'POST', body: JSON.stringify({ email }) });
         step = 'code';
       } else if (f === 'code') {
         const code = v.code;
         const d = await call('/api/account/verify', { method: 'POST', body: JSON.stringify({ email, code }) });
-        ls(TK, d.token); account = d.account; step = 'account';
-        tab = d.isNew || !account.phone ? 'info' : 'saved';
-        if (d.isNew) { msg = 'Бүртгэл үүслээ! Хүргэлтэд хэрэгтэй нэр, утас, хаягаа оруулаарай.'; msgOk = true; }
+        ls(TK, d.token); account = d.account; tab = d.isNew || !account.phone ? 'info' : 'saved';
+        step = (mode === 'forgot' || !account.hasPassword) ? 'setpass' : 'account';
+        if (d.isNew) { msg = 'Имэйл баталгаажлаа!'; msgOk = true; }
         mergeCart(); paintButton(); paintHeart();
       } else if (f === 'profile') {
         account = await call('/api/account', { method: 'PUT', body: JSON.stringify({
@@ -151,6 +179,8 @@
     busy = false; draw();
     if (step === 'code') setTimeout(() => box.querySelector('#acc-code')?.focus(), 30);
     if (step === 'email') setTimeout(() => box.querySelector('#acc-email')?.focus(), 30);
+    if (step === 'setpass') setTimeout(() => box.querySelector('#acc-new')?.focus(), 30);
+    if (step === 'login' && msg) setTimeout(() => box.querySelector('#acc-pass')?.focus(), 30);
   });
 
   box.addEventListener('click', async e => {
@@ -162,16 +192,23 @@
     const a = t.dataset.a;
     if (a === 'close') close();
     else if (a === 'back') { step = 'email'; msg = ''; draw(); }
+    else if (a === 'forgot' || a === 'register') {
+      const typed = box.querySelector('#acc-email'); if (typed && typed.value) email = typed.value.trim().toLowerCase();
+      mode = a === 'forgot' ? 'forgot' : 'new'; step = 'email'; msg = ''; draw(); box.querySelector('#acc-email')?.focus();
+    }
+    else if (a === 'tologin') { step = 'login'; msg = ''; draw(); }
+    else if (a === 'setpass') { step = 'setpass'; msg = ''; draw(); box.querySelector('#acc-new')?.focus(); }
+    else if (a === 'toaccount') { step = 'account'; msg = ''; draw(); }
     else if (a === 'resend') {
       try { await call('/api/account/code', { method: 'POST', body: JSON.stringify({ email }) }); msg = 'Шинэ код илгээлээ'; msgOk = true; }
       catch (err) { msg = err.message; msgOk = false; }
       draw();
     } else if (a === 'logout') {
-      ls(TK, null); account = null; step = 'email'; paintButton(); paintHeart(); close();
+      ls(TK, null); account = null; step = 'login'; paintButton(); paintHeart(); close();
     } else if (a === 'delete') {
       if (!t.dataset.armed) { t.dataset.armed = '1'; t.textContent = 'Дахин дарж бүрмөсөн устгана'; setTimeout(() => { t.dataset.armed = ''; t.textContent = 'Бүртгэл устгах'; }, 5000); return; }
       try { await call('/api/account', { method: 'DELETE' }); } catch (err) { msg = err.message; draw(); return; }
-      ls(TK, null); account = null; step = 'email'; paintButton(); paintHeart(); close();
+      ls(TK, null); account = null; step = 'login'; paintButton(); paintHeart(); close();
     }
   });
 

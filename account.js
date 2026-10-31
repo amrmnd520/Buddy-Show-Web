@@ -264,7 +264,7 @@
     paintHeart();
   }
   function paintHeart() {
-    const add = document.querySelector('#detail-content .add');
+    const add = (document.querySelector('#detail-content button[onclick^="addDetailProduct"]') || [...document.querySelectorAll('#detail-content .add')].pop());
     if (!add || typeof detailProductId === 'undefined') return;
     let h = document.getElementById('acc-heart');
     if (!h) { h = document.createElement('button'); h.id = 'acc-heart'; h.type = 'button'; h.className = 'acc-heart'; h.onclick = () => toggleSave(Number(detailProductId)); add.after(h); }

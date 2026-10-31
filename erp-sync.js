@@ -48,8 +48,10 @@
       if (Array.isArray(p.sizes) && p.sizes.length) {
         let any = false, total = 0, low = 0;
         for (const s of p.sizes) {
-          const h = erp[norm(s.code)];
-          if (!h) continue;
+          // a size can be listed twice in the ERP (s.extra = more codes): add their stock up
+          const hs = [s.code, ...(s.extra || [])].map(c => erp[norm(c)]).filter(Boolean);
+          if (!hs.length) continue;
+          const h = [(hs.find(x => x[0] > 0) || hs[0])[0], hs.reduce((t, x) => t + x[1], 0)];
           any = true; s.price = h[0]; s.qty = h[1]; total += h[1];
           if (h[0] > 0 && (!low || h[0] < low)) low = h[0];
         }

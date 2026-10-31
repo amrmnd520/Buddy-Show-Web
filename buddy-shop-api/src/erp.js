@@ -13,7 +13,7 @@ async function odoo(env, path, params, cookie) {
     headers: { 'content-type': 'application/json', ...(cookie ? { cookie } : {}) },
     body: JSON.stringify({ jsonrpc: '2.0', method: 'call', params }),
   });
-  if (!res.ok) throw new Error(`Odoo HTTP ${res.status}`);
+  if (!res.ok) throw new Error(`Odoo HTTP ${res.status}: ${(await res.text()).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 160)}`);
   const data = await res.json();
   if (data.error) throw new Error('Odoo: ' + (data.error.data?.message || data.error.message));
   return { result: data.result, res };

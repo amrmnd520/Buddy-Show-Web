@@ -191,7 +191,10 @@
     draw();
   });
   const adminSection = document.getElementById('admin');
-  if (adminSection) adminSection.prepend(panel);
+  // below «Бүтээгдэхүүн удирдах», above «Сайтын тохиргоо»
+  const manager = document.getElementById('adminrows')?.closest('.admin-panel');
+  const settings = document.getElementById('site-settings');
+  if (manager) manager.after(panel); else if (settings) settings.before(panel); else if (adminSection) adminSection.prepend(panel);
   draw();
   // Load when staff are signed in (shop-sync.js toggles this class on <body>).
   const check = () => { if (document.body.classList.contains('staff-signed-in') && !data && !loading) load(false); else if (!document.body.classList.contains('staff-signed-in')) { data = null; draw(); } };

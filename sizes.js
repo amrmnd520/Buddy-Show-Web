@@ -12,10 +12,17 @@
   const findP = id => list().find(x => Number(x.id) === Number(id));
   const hasSizes = p => p && Array.isArray(p.sizes) && p.sizes.length > 0;
   // Order sizes the way people expect: XS < S < M < L < XL…, numbers by value (1000 < 2500 < C3000 < 4000).
-  const RANK = ['XXS', 'XS', 'S', 'SM', 'M', 'MK', 'L', 'LK', 'LXL', 'XL', 'XLK', 'XXL', '2XL', '3XL', '4XL', '5XL'];
-  const sizeKey = l => { const u = String(l).trim().toUpperCase(); const r = RANK.indexOf(u); if (r >= 0) return [0, r, u];
-    const n = parseFloat((u.match(/\d+(\.\d+)?/) || [])[0]); return isNaN(n) ? [2, 0, u] : [1, n, u]; };
-  const natural = (a, b) => { const x = sizeKey(a), y = sizeKey(b); return x[0] - y[0] || x[1] - y[1] || x[2].localeCompare(y[2], 'en', { numeric: true }); };
+  const RANK = ['XXS', 'XS', 'S', 'SMALL', 'SM', 'M', 'MEDIUM', 'MK', 'KING', 'L', 'LARGE', 'LK', 'LXL', 'XL', 'XLK', 'XXL', '2XL', '3XL', '4XL', '5XL'];
+  // "Black M" / "Realtree Edge XL": group by colour, then by size.
+  const sizeKey = l => {
+    const u = String(l).trim().toUpperCase().replace(/\s+/g, ' '), parts = u.split(' ');
+    const last = parts[parts.length - 1], head = parts.slice(0, -1).join(' ');
+    const r = RANK.indexOf(u); if (r >= 0) return [0, '', r, u];
+    const r2 = RANK.indexOf(last); if (r2 >= 0 && head) return [1, head, r2, u];
+    const n = parseFloat((u.match(/\d+(\.\d+)?/) || [])[0]);
+    return isNaN(n) ? [3, '', 0, u] : [2, '', n, u];
+  };
+  const natural = (a, b) => { const x = sizeKey(a), y = sizeKey(b); return x[0] - y[0] || x[1].localeCompare(y[1]) || x[2] - y[2] || x[3].localeCompare(y[3], 'en', { numeric: true }); };
   let picked = null; // { id, label }
 
   const st = document.createElement('style');

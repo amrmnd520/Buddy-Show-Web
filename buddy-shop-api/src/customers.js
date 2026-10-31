@@ -36,8 +36,9 @@ async function ensure(env) {
     env.DB.prepare('CREATE INDEX IF NOT EXISTS orders_customer ON orders(customer_id, created_at)'),
   ]);
   const cols = await env.DB.prepare('PRAGMA table_info(customers)').all();
-  if (!(cols.results || []).some((c) => c.name === 'pass_hash')) {
-    await env.DB.prepare('ALTER TABLE customers ADD COLUMN pass_hash TEXT').run();
+  const have = new Set((cols.results || []).map((c) => c.name));
+  for (const col of ['pass_hash', 'addr']) {
+    if (!have.has(col)) await env.DB.prepare(`ALTER TABLE customers ADD COLUMN ${col} TEXT`).run();
   }
   ready = true;
 }
@@ -102,9 +103,23 @@ async function allow(env, key, limit, windowMs) {
 }
 
 function parseList(s) { try { const v = JSON.parse(s || '[]'); return Array.isArray(v) ? v : []; } catch { return []; } }
+function parseObj(s) { try { const v = JSON.parse(s || '{}'); return v && typeof v === 'object' && !Array.isArray(v) ? v : {}; } catch { return {}; } }
+// structured delivery address → also kept as one readable line in `address`
+const ADDR = { city: 40, district: 40, khoroo: 10, complex: 80, building: 20, entrance: 10, floor: 10, door: 20, note: 200 };
+function cleanAddr(a) {
+  const o = {};
+  for (const [k, n] of Object.entries(ADDR)) { const v = clip(a && a[k], n); if (v) o[k] = v; }
+  return o;
+}
+function addrLine(a) {
+  const num = (v, w) => (v ? (/^\d+$/.test(v) ? `${v}-р ${w}` : `${v} ${w}`) : '');
+  const parts = [a.city, a.district, num(a.khoroo, a.city && a.city !== 'Улаанбаатар' ? 'баг' : 'хороо'), a.complex,
+    num(a.building, 'байр'), num(a.entrance, 'орц'), num(a.floor, 'давхар'), a.door ? `${a.door} тоот` : ''].filter(Boolean);
+  return (parts.join(', ') + (a.note ? `. ${a.note}` : '')).slice(0, 400);
+}
 function profile(row, orders = []) {
   return {
-    email: row.email, hasPassword: !!row.pass_hash, name: row.name || '', phone: row.phone || '', address: row.address || '',
+    email: row.email, hasPassword: !!row.pass_hash, name: row.name || '', phone: row.phone || '', address: row.address || '', addr: parseObj(row.addr),
     wishlist: parseList(row.wishlist), cart: parseList(row.cart), createdAt: row.created_at,
     orders: orders.map((o) => ({ id: o.id, createdAt: o.created_at, status: o.status, total: o.total, items: parseList(o.items), note: o.note || '' })),
   };
@@ -216,7 +231,10 @@ export async function updateAccount(request, env, id) {
   const put = (col, v) => { vals.push(v); sets.push(`${col} = ?${vals.length}`); };
   if ('name' in b) put('name', clip(b.name, 80));
   if ('phone' in b) put('phone', clip(String(b.phone || '').replace(/[^\d+ ]/g, ''), 20));
-  if ('address' in b) put('address', clip(b.address, 400));
+  if (b.addr && typeof b.addr === 'object') {
+    const a = cleanAddr(b.addr);
+    put('addr', JSON.stringify(a)); put('address', addrLine(a) || null);
+  } else if ('address' in b) put('address', clip(b.address, 400));
   if ('wishlist' in b && Array.isArray(b.wishlist)) put('wishlist', JSON.stringify([...new Set(b.wishlist.map(Number).filter(Number.isSafeInteger))].slice(0, MAX_LIST)));
   if ('cart' in b && Array.isArray(b.cart)) {
     const cart = b.cart.slice(0, MAX_LIST).filter((x) => x && Number.isSafeInteger(Number(x.id))).map((x) => {

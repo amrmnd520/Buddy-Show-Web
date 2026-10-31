@@ -36,7 +36,9 @@
 .acc-x{position:absolute;right:12px;top:10px;background:none;border:0;font-size:26px;line-height:1;cursor:pointer;color:#5a6a72}
 .acc-box label{display:block;font-size:13px;font-weight:700;margin:12px 0 5px}
 .acc-box input,.acc-box textarea{width:100%;box-sizing:border-box;border:1px solid #cfd6da;border-radius:6px;padding:11px 12px;font:inherit;font-size:15px}
-.acc-box textarea{min-height:76px;resize:vertical}
+.acc-box textarea{min-height:76px;resize:vertical}.acc-box select{width:100%;box-sizing:border-box;border:1px solid #cfd6da;border-radius:6px;padding:10px 12px;font:inherit;font-size:15px;background:#fff}
+.acc-grid{display:grid;grid-template-columns:1fr 1fr;gap:0 12px}.acc-sec{font-weight:800;font-size:15px;margin:20px 0 0;padding-top:14px;border-top:1px solid #e3e7e9}
+@media(max-width:420px){.acc-grid{grid-template-columns:1fr 1fr}}
 .acc-box input.code{font-size:26px;letter-spacing:10px;text-align:center;font-weight:800}
 .acc-go{width:100%;margin-top:16px;background:var(--orange,#d77a35);color:#fff;border:0;border-radius:6px;padding:13px;font-weight:800;font-size:15px;cursor:pointer}
 .acc-go:disabled{opacity:.6;cursor:wait}
@@ -84,6 +86,43 @@
     setTimeout(() => box.querySelector('input')?.focus(), 30);
   }
   function close() { modal.classList.remove('open'); }
+  // ---------- structured delivery address ----------
+  const CITIES = ['Улаанбаатар', 'Архангай', 'Баян-Өлгий', 'Баянхонгор', 'Булган', 'Говь-Алтай', 'Говьсүмбэр', 'Дархан-Уул', 'Дорноговь', 'Дорнод',
+    'Дундговь', 'Завхан', 'Орхон', 'Өвөрхангай', 'Өмнөговь', 'Сүхбаатар', 'Сэлэнгэ', 'Төв', 'Увс', 'Ховд', 'Хөвсгөл', 'Хэнтий'];
+  const UB = ['Баянгол', 'Баянзүрх', 'Сонгинохайрхан', 'Сүхбаатар', 'Хан-Уул', 'Чингэлтэй', 'Налайх', 'Багануур', 'Багахангай'];
+  function districtField(city, value) {
+    if (city === 'Улаанбаатар') {
+      return `<label for="acc-a-district">Дүүрэг</label><select id="acc-a-district"><option value="">— Сонгох —</option>${UB.map(d => `<option ${d === value ? 'selected' : ''}>${d}</option>`).join('')}</select>`;
+    }
+    return `<label for="acc-a-district">Сум / дүүрэг</label><input id="acc-a-district" maxlength="40" value="${esc(value)}">`;
+  }
+  function addrFields(a) {
+    const x = a.addr || {}, city = x.city || 'Улаанбаатар';
+    const inp = (k, label, ph = '', mode = '') => `<div><label for="acc-a-${k}">${label}</label><input id="acc-a-${k}" maxlength="80" ${mode ? `inputmode="${mode}"` : ''} placeholder="${ph}" value="${esc(x[k] || '')}"></div>`;
+    return `${!a.addr || !Object.keys(a.addr).length ? (a.address ? `<p class="sub" style="margin:4px 0 0">Өмнөх хаяг: ${esc(a.address)}</p>` : '') : ''}
+      <div class="acc-grid">
+        <div><label for="acc-a-city">Хот / аймаг</label><select id="acc-a-city">${CITIES.map(c => `<option ${c === city ? 'selected' : ''}>${c}</option>`).join('')}</select></div>
+        <div id="acc-a-dwrap">${districtField(city, x.district || '')}</div>
+        ${inp('khoroo', city === 'Улаанбаатар' ? 'Хороо' : 'Баг', 'жишээ: 3', 'numeric')}
+        ${inp('complex', 'Хотхон / гудамж', 'жишээ: Хүннү 2222')}
+        ${inp('building', 'Байр', 'жишээ: 12')}
+        ${inp('entrance', 'Орц', 'жишээ: 2', 'numeric')}
+        ${inp('floor', 'Давхар', '', 'numeric')}
+        ${inp('door', 'Тоот', 'жишээ: 45')}
+      </div>
+      <label for="acc-a-note">Нэмэлт тайлбар</label><input id="acc-a-note" maxlength="200" placeholder="Орцны код, тэмдэг, хүргэлтийн цаг гэх мэт" value="${esc(x.note || '')}">`;
+  }
+  function readAddr(form) {
+    const g = k => ((form.querySelector('#acc-a-' + k) || {}).value || '').trim();
+    return { city: g('city'), district: g('district'), khoroo: g('khoroo'), complex: g('complex'), building: g('building'), entrance: g('entrance'), floor: g('floor'), door: g('door'), note: g('note') };
+  }
+  box.addEventListener('change', e => {
+    if (e.target.id !== 'acc-a-city') return;
+    const city = e.target.value, w = box.querySelector('#acc-a-dwrap');
+    if (w) w.innerHTML = districtField(city, '');
+    const kl = box.querySelector('label[for="acc-a-khoroo"]'); if (kl) kl.textContent = city === 'Улаанбаатар' ? 'Хороо' : 'Баг';
+  });
+
   const message = () => msg ? `<div class="acc-msg ${msgOk ? 'ok' : ''}">${esc(msg)}</div>` : '';
 
   function draw() {
@@ -122,7 +161,7 @@
       if (tab === 'info') {
         h += `<form data-f="profile"><label for="acc-name">Нэр</label><input id="acc-name" autocomplete="name" maxlength="80" value="${esc(a.name)}">
           <label for="acc-phone">Утас</label><input id="acc-phone" type="tel" autocomplete="tel" maxlength="20" value="${esc(a.phone)}" placeholder="9911xxxx">
-          <label for="acc-addr">Хүргэлтийн хаяг</label><textarea id="acc-addr" autocomplete="street-address" maxlength="400" placeholder="Дүүрэг, хороо, байр, орц, тоот">${esc(a.address)}</textarea>
+          <div class="acc-sec">Хүргэлтийн хаяг</div>${addrFields(a)}
           <button class="acc-go" ${busy ? 'disabled' : ''}>${busy ? 'Хадгалж байна…' : 'Хадгалах'}</button></form>${message()}
           <div class="acc-foot"><button class="acc-link" data-a="setpass">${a.hasPassword ? 'Нууц үг солих' : 'Нууц үг тохируулах'}</button></div>`;
       } else if (tab === 'saved') {
@@ -145,10 +184,10 @@
     const f = e.target.dataset.f;
     if (busy) return;
     const val = sel => (e.target.querySelector(sel) || {}).value || '';
-    const v = { pass: val('#acc-pass'), new1: val('#acc-new'), new2: val('#acc-new2'), email: val('#acc-email'), code: val('#acc-code'), name: val('#acc-name'), phone: val('#acc-phone'), address: val('#acc-addr') };
+    const v = { pass: val('#acc-pass'), new1: val('#acc-new'), new2: val('#acc-new2'), email: val('#acc-email'), code: val('#acc-code'), name: val('#acc-name'), phone: val('#acc-phone'), addr: readAddr(e.target) };
     if (f === 'email' || f === 'login') email = v.email.trim().toLowerCase();
     if (f === 'setpass' && v.new1 !== v.new2) { msg = 'Нууц үг хоорондоо таарахгүй байна'; msgOk = false; draw(); return; }
-    if (f === 'profile' && account) Object.assign(account, { name: v.name, phone: v.phone, address: v.address });
+    if (f === 'profile' && account) Object.assign(account, { name: v.name, phone: v.phone, addr: v.addr });
     busy = true; msg = ''; draw();
     try {
       if (f === 'login') {
@@ -172,7 +211,7 @@
         mergeCart(); paintButton(); paintHeart();
       } else if (f === 'profile') {
         account = await call('/api/account', { method: 'PUT', body: JSON.stringify({
-          name: v.name, phone: v.phone, address: v.address }) });
+          name: v.name, phone: v.phone, addr: v.addr }) });
         msg = 'Хадгалагдлаа'; msgOk = true; paintButton();
       }
     } catch (err) { msg = err.message; msgOk = false; }

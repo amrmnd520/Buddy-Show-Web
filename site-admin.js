@@ -145,7 +145,7 @@ body{background:${c.background}}
       ${field('Зургийн босоо байрлал: <b>' + S.hero.position + '%</b>', inp('hero.position', 'range', 'min="0" max="100"'))}
       ${field('Бичвэрийн байрлал', `<select data-path="hero.align"><option value="left" ${S.hero.align === 'left' ? 'selected' : ''}>Зүүн</option><option value="center" ${S.hero.align === 'center' ? 'selected' : ''}>Голд</option></select>`)}</div>`;
     if (tab === 'menu') {
-      const catOpts = (typeof cats !== 'undefined' ? cats : ['Бүгд','Спин','Флай','Өгөөш','Вейдер','Цүнх','Хувцас','Аксессуар','Өвлийн хэрэгсэл']).slice(1);
+      const catOpts = (typeof cats !== 'undefined' ? cats : ['Бүгд','Спин','Флай','Өгөөш','Вейдер','Цүнх','Хувцас','Аксессуар','Өвлийн хэрэгсэл','Бэлгийн карт']).slice(1);
       const brands = [...new Set(products.map(p => p.brand).filter(Boolean))].sort();
       const valueField = (it, i) => it.type === 'category' ? `<select data-menu="${i}" data-key="value">${catOpts.map(c => `<option ${c === it.value ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select>`
         : it.type === 'brand' ? `<select data-menu="${i}" data-key="value">${brands.map(b => `<option ${b === it.value ? 'selected' : ''}>${esc(b)}</option>`).join('')}</select>`

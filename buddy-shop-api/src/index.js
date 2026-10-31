@@ -4,6 +4,7 @@
 
 import { syncErp, getErp, getCatalog, syncTop, getTop, setDismissed } from './erp.js';
 import { track, stats, prune } from './stats.js';
+import { customerId, requestCode, verifyCode, getAccount, updateAccount, deleteAccount, listCustomers, pruneCodes } from './customers.js';
 
 const JSON_HEADERS = { 'content-type': 'application/json; charset=utf-8' };
 const CORS = {
@@ -157,10 +158,26 @@ export default {
         return json({ updatedAt: d.updatedAt, count: d.count, ms: d.ms, lastError: e ? JSON.parse(await e.text()) : null }, 200, { 'cache-control': 'no-store' });
       }
 
+      // ---- customer accounts (email code sign-in) ----
+      if (path.startsWith('/api/account')) {
+        const out = (r) => json(r[1], r[0], { 'cache-control': 'no-store' });
+        if (request.method === 'POST' && path === '/api/account/code') {
+          try { return out(await requestCode(request, env)); } catch (e) { return fail(502, e.message); }
+        }
+        if (request.method === 'POST' && path === '/api/account/verify') return out(await verifyCode(request, env));
+        const cid = await customerId(request, env);
+        if (!cid) return fail(401, 'Дахин нэвтэрнэ үү');
+        if (path === '/api/account' && request.method === 'GET') return out(await getAccount(env, cid));
+        if (path === '/api/account' && request.method === 'PUT') return out(await updateAccount(request, env, cid));
+        if (path === '/api/account' && request.method === 'DELETE') return out(await deleteAccount(env, cid));
+        return fail(404, 'Not found');
+      }
+
       const user = await whoIs(request, env);
       if (!user) return fail(401, 'Дахин нэвтэрнэ үү');
       if (request.method === 'GET' && path === '/api/me') return json({ user });
       if (request.method === 'POST' && path === '/api/upload') return uploadImage(request, env, url, user);
+      if (request.method === 'GET' && path === '/api/customers') return json({ items: await listCustomers(env) }, 200, { 'cache-control': 'no-store' });
       if (request.method === 'GET' && path === '/api/stats') return json(await stats(env, url.searchParams.get('days')), 200, { 'cache-control': 'no-store' });
       if (request.method === 'GET' && path === '/api/erp/catalog') {
         return new Response(await getCatalog(env), { headers: { ...JSON_HEADERS, ...CORS, 'cache-control': 'no-store' } });
@@ -199,6 +216,7 @@ export default {
     if (event.cron === '0 22 * * *') {
       ctx.waitUntil(syncTop(env).then((r) => console.log('erp top', r), (e) => saveErpError(env, e)));
       ctx.waitUntil(prune(env).catch((e) => console.error('prune', e)));
+      ctx.waitUntil(pruneCodes(env).catch((e) => console.error('prune codes', e)));
       return;
     }
     ctx.waitUntil(syncErp(env).then(

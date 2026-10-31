@@ -28,3 +28,4 @@ bucket_name = "buddy-shop-images"
 #   TOKEN_SECRET = long random string
 #   ODOO_LOGIN    = Odoo login (email)
 #   ODOO_PASSWORD = Odoo password
+#   RESEND_API_KEY = Resend API key (customer sign-in codes from info@buddyshop.mn)

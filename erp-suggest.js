@@ -119,6 +119,7 @@
         <select id="erps-sort" aria-label="Эрэмбэ"><option value="revenue" ${sort === 'revenue' ? 'selected' : ''}>Орлогоор</option><option value="sold" ${sort === 'sold' ? 'selected' : ''}>Зарагдсан тоогоор</option></select>
         <label><input type="checkbox" id="erps-stock" ${inStockOnly ? 'checked' : ''}> Үлдэгдэлтэйг л</label>
         <label><input type="checkbox" id="erps-hidden" ${showHidden ? 'checked' : ''}> Нуусныг харах</label>
+        <button type="button" data-a="sizes-any">Хэмжээ тохируулах…</button>
         <button type="button" data-a="refresh">${loading ? 'Ачаалж байна…' : '↻ Одоо шинэчлэх'}</button>
       </div>
       ${flash ? `<div class="erps-flash">${flash}</div>` : ''}
@@ -131,7 +132,7 @@
             <div class="erps-name">${esc(it.name)}</div>
             <div class="erps-meta"><span class="erps-sold">${fmt(it.sold)} ш зарагдсан</span>орлого ${fmt(it.revenue)}₮ · үнэ ${fmt(it.price)}₮ · Emart үлдэгдэл <span class="${it.qty ? '' : 'erps-zero'}">${fmt(it.qty)}</span>${it.categ ? ' · ERP: ' + esc(it.categ) : ''}</div>
             <div class="erps-codes">${esc(it.codes.join(' | '))}</div>
-            ${sim ? `<div class="erps-hint">Сайтад кодгүй төстэй бараа байна: <b>${esc(sim.name)}</b> <button type="button" data-a="link" data-pid="${Number(sim.id)}">Кодыг холбох</button></div>` : ''}
+            ${sim ? `<div class="erps-hint">Сайтад кодгүй төстэй бараа байна: <b>${esc(sim.name)}</b> <button type="button" data-a="link" data-pid="${Number(sim.id)}">Кодыг холбох</button><button type="button" data-a="sizes" data-pid="${Number(sim.id)}">Хэмжээгээр холбох</button></div>` : ''}
           </div>
           <div class="erps-act">
             <select aria-label="Ангилал" data-cat>${catOpts.map(c => `<option ${c === cat ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select>
@@ -150,6 +151,7 @@
     const a = b.dataset.a, row = b.closest('.erps-row'), it = row && findItem(row.dataset.key);
     if (a === 'refresh') return load(true);
     if (a === 'more') { limit += 40; return draw(); }
+    if (a === 'sizes-any') return window.openSizeEditor && window.openSizeEditor(null);
     if (!it) return;
     if (a === 'add') {
       const cat = row.querySelector('[data-cat]').value;
@@ -159,6 +161,7 @@
       products.unshift(p);
       return finish(`«${esc(it.name)}» сайтад нэмэгдлээ (${esc(cat)}). Доорх «Бүтээгдэхүүн удирдах» хүснэгтийн эхний мөрөнд 📷 Зураг нэмэх товчоор зургаа оруулна уу.`);
     }
+    if (a === 'sizes') return window.openSizeEditor && window.openSizeEditor(Number(b.dataset.pid), it.name);
     if (a === 'link') {
       const p = list().find(x => Number(x.id) === Number(b.dataset.pid)); if (!p) return;
       if (b.dataset.armed !== '1') { b.dataset.armed = '1'; b.textContent = 'Дахин дарж баталгаажуул'; setTimeout(() => { if (b.isConnected) { b.dataset.armed = ''; b.textContent = 'Кодыг холбох'; } }, 4000); return; }
@@ -179,6 +182,11 @@
     if (e.target.id === 'erps-hidden') { showHidden = e.target.checked; limit = 40; draw(); }
   });
 
+  window.addEventListener('sizes-saved', e => {
+    const p = list().find(x => Number(x.id) === Number(e.detail.id));
+    flash = p ? `«${esc(p.name)}» бараанд ${e.detail.count} хэмжээ холбогдлоо. Барааны хуудсанд хэмжээ сонгох товчнууд гарна.` : '';
+    draw();
+  });
   const adminSection = document.getElementById('admin');
   if (adminSection) adminSection.prepend(panel);
   draw();

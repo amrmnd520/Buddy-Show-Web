@@ -2,7 +2,7 @@
 // Stores products that were added, edited or deleted by staff on top of the
 // site's catalog.js, and serves product photos uploaded from the admin page.
 
-import { syncErp, getErp, syncTop, getTop, setDismissed } from './erp.js';
+import { syncErp, getErp, getCatalog, syncTop, getTop, setDismissed } from './erp.js';
 
 const JSON_HEADERS = { 'content-type': 'application/json; charset=utf-8' };
 const CORS = {
@@ -159,6 +159,9 @@ export default {
       if (!user) return fail(401, 'Дахин нэвтэрнэ үү');
       if (request.method === 'GET' && path === '/api/me') return json({ user });
       if (request.method === 'POST' && path === '/api/upload') return uploadImage(request, env, url, user);
+      if (request.method === 'GET' && path === '/api/erp/catalog') {
+        return new Response(await getCatalog(env), { headers: { ...JSON_HEADERS, ...CORS, 'cache-control': 'no-store' } });
+      }
       if (request.method === 'GET' && path === '/api/erp/top') return json(await getTop(env), 200, { 'cache-control': 'no-store' });
       if (request.method === 'POST' && path === '/api/erp/top/refresh') {
         try { return json({ ok: true, ...(await syncTop(env, Number(url.searchParams.get('days')) || 90)) }); }

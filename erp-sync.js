@@ -43,6 +43,19 @@
     if (!erp) return 0;
     let n = 0;
     for (const p of list) {
+      // Size options (p.sizes = [{label, code}]): each size gets its own ERP price and stock;
+      // the product shows the lowest price and the total stock.
+      if (Array.isArray(p.sizes) && p.sizes.length) {
+        let any = false, total = 0, low = 0;
+        for (const s of p.sizes) {
+          const h = erp[norm(s.code)];
+          if (!h) continue;
+          any = true; s.price = h[0]; s.qty = h[1]; total += h[1];
+          if (h[0] > 0 && (!low || h[0] < low)) low = h[0];
+        }
+        if (any) { if (low) { p.price = low; p.regularPrice = low; } p.stock = total; p.erpQty = total; n++; }
+        continue;
+      }
       const hits = codesOf(p).map(c => erp[c]).filter(Boolean);
       if (!hits.length) continue;
       const price = (hits.find(h => h[0] > 0) || [0])[0];

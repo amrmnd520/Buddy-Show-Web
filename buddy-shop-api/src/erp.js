@@ -6,6 +6,7 @@
 // Secrets (npx wrangler secret put): ODOO_LOGIN, ODOO_PASSWORD
 
 const KEY = 'erp/stock.json';
+const CATALOG_KEY = 'erp/catalog.json';
 
 async function odoo(env, path, params, cookie) {
   const res = await fetch(env.ODOO_URL.replace(/\/+$/, '') + path, {
@@ -45,13 +46,14 @@ export async function syncErp(env) {
     model: 'product.product', method: 'search_read',
     args: [[['default_code', '!=', false]]],
     kwargs: {
-      fields: ['default_code', 'lst_price', 'qty_available'],
+      fields: ['default_code', 'name', 'lst_price', 'qty_available'],
       context: { location, allowed_company_ids: [company], force_company: company },
     },
   }, cookie);
 
-  // 3. Compact map: CODE -> [price, qty]
+  // 3. Compact map: CODE -> [price, qty]  (public, small)  +  names for staff tools (erp/catalog.json)
   const items = {};
+  const named = [];
   for (const r of rows || []) {
     const code = String(r.default_code || '').trim().toUpperCase().replace(/\s+/g, ' ');
     if (!code) continue;
@@ -59,6 +61,7 @@ export async function syncErp(env) {
     const qty = Math.max(0, Math.floor(Number(r.qty_available) || 0));
     if (items[code]) items[code][1] += qty; // same code twice → add stock
     else items[code] = [price, qty];
+    named.push([String(r.default_code).trim().replace(/\s+/g, ' '), String(r.name || '').replace(/\s+/g, ' ').trim(), price, qty]);
   }
 
   await odoo(env, '/web/session/destroy', {}, cookie).catch(() => {});
@@ -67,7 +70,16 @@ export async function syncErp(env) {
   await env.IMAGES.put(KEY, JSON.stringify(out), {
     httpMetadata: { contentType: 'application/json; charset=utf-8' },
   });
+  await env.IMAGES.put(CATALOG_KEY, JSON.stringify({ updatedAt: out.updatedAt, items: named }), {
+    httpMetadata: { contentType: 'application/json; charset=utf-8' },
+  });
   return { updatedAt: out.updatedAt, count: out.count, ms: out.ms };
+}
+
+// Every ERP product with its name — for staff tools only (served behind login).
+export async function getCatalog(env) {
+  const obj = await env.IMAGES.get(CATALOG_KEY);
+  return obj ? obj.text() : JSON.stringify({ updatedAt: null, items: [] });
 }
 
 export async function getErp(env) {

@@ -3,6 +3,7 @@
 // site's catalog.js, and serves product photos uploaded from the admin page.
 
 import { syncErp, getErp, getCatalog, syncTop, getTop, setDismissed } from './erp.js';
+import { track, stats, prune } from './stats.js';
 
 const JSON_HEADERS = { 'content-type': 'application/json; charset=utf-8' };
 const CORS = {
@@ -146,6 +147,7 @@ export default {
       if (request.method === 'GET' && path.startsWith('/img/')) return serveImage(env, decodeURIComponent(path.slice(5)));
       if (request.method === 'GET' && path === '/api/products') return listProducts(env);
       if (request.method === 'POST' && path === '/api/login') return login(request, env);
+      if (request.method === 'POST' && path === '/api/t') return track(request, env).then((r) => { for (const [k, v] of Object.entries(CORS)) r.headers.set(k, v); return r; });
       if (request.method === 'GET' && path === '/api/erp') {
         return new Response(await getErp(env), { headers: { ...JSON_HEADERS, ...CORS, 'cache-control': 'public, max-age=300' } });
       }
@@ -159,6 +161,7 @@ export default {
       if (!user) return fail(401, 'Дахин нэвтэрнэ үү');
       if (request.method === 'GET' && path === '/api/me') return json({ user });
       if (request.method === 'POST' && path === '/api/upload') return uploadImage(request, env, url, user);
+      if (request.method === 'GET' && path === '/api/stats') return json(await stats(env, url.searchParams.get('days')), 200, { 'cache-control': 'no-store' });
       if (request.method === 'GET' && path === '/api/erp/catalog') {
         return new Response(await getCatalog(env), { headers: { ...JSON_HEADERS, ...CORS, 'cache-control': 'no-store' } });
       }
@@ -195,6 +198,7 @@ export default {
     // Daily (06:00 Ulaanbaatar): POS best sellers for the admin suggestions.
     if (event.cron === '0 22 * * *') {
       ctx.waitUntil(syncTop(env).then((r) => console.log('erp top', r), (e) => saveErpError(env, e)));
+      ctx.waitUntil(prune(env).catch((e) => console.error('prune', e)));
       return;
     }
     ctx.waitUntil(syncErp(env).then(

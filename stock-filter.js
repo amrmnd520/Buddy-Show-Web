@@ -39,12 +39,49 @@
     label.style.display = soldOut ? '' : 'none';
     const list = only ? full.filter(p => !out(p)) : [...full.filter(p => !out(p)), ...full.filter(out)];
     products = list;
-    try { return prev.apply(this, a); }
+    try { const r = prev.apply(this, a); cascade(); return r; }
     finally {
       products = full;
       const c = document.getElementById('catalog-count');
       if (c && only && soldOut) c.textContent = c.textContent.replace(/·\s*Нийт\s*\d+/, `· ${soldOut} дууссан бараа нуугдсан`);
     }
   };
+  // Brand → Category → Sub-category: each list shows only what exists for the choices before it,
+  // with how many products there are (sold-out ones not counted while the switch is on).
+  function cascade() {
+    const $ = id => document.getElementById(id);
+    const bSel = $('brand'), cSel = $('category'), sSel = $('subcategory'); if (!bSel || !cSel || !sSel) return;
+    const esc = t => String(t).replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
+    const B = bSel.value || 'Бүх брэнд', C = cSel.value || 'Бүгд', S = sSel.value || '';
+    const inBrand = products.filter(p => B === 'Бүх брэнд' || p.brand === B);
+    const catOk = (p, c) => (typeof categoryMatches === 'function' ? categoryMatches(p, c) : (c === 'Бүгд' || p.category === c));
+    const subsOf = p => (typeof productSubcategories === 'function' ? productSubcategories(p) : []);
+    // 1. brands: all, with counts
+    const bc = new Map(); products.forEach(p => p.brand && bc.set(p.brand, (bc.get(p.brand) || 0) + 1));
+    const brands = [...bc.keys()].sort((x, y) => x.localeCompare(y, 'en', { sensitivity: 'base' }));
+    if (B !== 'Бүх брэнд' && !bc.has(B)) brands.unshift(B);
+    bSel.innerHTML = `<option value="Бүх брэнд">Бүх брэнд (${products.length})</option>` + brands.map(b => `<option value="${esc(b)}">${esc(b)} (${bc.get(b) || 0})</option>`).join('');
+    bSel.value = B;
+    // 2. categories that this brand has
+    const list = (typeof cats !== 'undefined' ? cats : ['Бүгд']).filter(c => c !== 'Бүгд');
+    const cc = list.map(c => [c, inBrand.filter(p => catOk(p, c)).length]).filter(([c, n]) => n || c === C);
+    cSel.innerHTML = `<option value="Бүгд">${B === 'Бүх брэнд' ? 'Бүх ангилал' : 'Бүх ангилал'} (${inBrand.length})</option>` + cc.map(([c, n]) => `<option value="${esc(c)}">${esc(c)} (${n})</option>`).join('');
+    cSel.value = C;
+    // 3. sub-categories inside brand + category
+    const inCat = inBrand.filter(p => catOk(p, C));
+    const sc = new Map(); inCat.forEach(p => subsOf(p).forEach(x => sc.set(x, (sc.get(x) || 0) + 1)));
+    const subs = [...sc.keys()].sort((x, y) => x.localeCompare(y, 'mn'));
+    if (S && !sc.has(S)) subs.unshift(S);
+    sSel.innerHTML = `<option value="">${C === 'Бүгд' ? 'Бүх дэд ангилал' : 'Бүх дэд ангилал'} (${inCat.length})</option>` + subs.map(x => `<option value="${esc(x)}">${esc(x)} (${sc.get(x) || 0})</option>`).join('');
+    sSel.value = S;
+    sSel.disabled = !subs.length;
+  }
+
+  // one row on wide screens: Brand · Category · Sub-category · Sort · In stock · Clear
+  const lay = document.createElement('style');
+  lay.textContent = `@media(min-width:1101px){#catalog .toolbar{grid-template-columns:minmax(0,1.1fr) minmax(0,1fr) minmax(0,1.1fr) minmax(0,.9fr) auto auto!important;align-items:center}}
+@media(max-width:1100px) and (min-width:601px){#catalog .toolbar{grid-template-columns:repeat(3,minmax(0,1fr))!important}}
+#catalog .toolbar select:disabled{opacity:.55}`;
+  document.head.appendChild(lay);
   render();
 })();

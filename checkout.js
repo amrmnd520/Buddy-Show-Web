@@ -205,6 +205,8 @@
 .ord-body textarea{width:100%;box-sizing:border-box;min-height:60px;border:1px solid #cfd6da;border-radius:6px;padding:8px;font:inherit}
 .ord-st{font-size:12px;font-weight:700;border-radius:10px;padding:3px 9px;background:#eef3f6;color:#203746;white-space:nowrap;justify-self:start}
 .ord-st.new{background:#fff4e5;color:#8a5300}.ord-st.done{background:#eef7f0;color:#1f5f3a}.ord-st.cancelled{background:#fdecea;color:#b42318}
+.tg-box{border:1px solid #e3e7e9;border-radius:8px;margin:8px 0 4px;background:#fafbfc}.tg-head{width:100%;text-align:left;background:none;border:0;padding:10px 12px;font:inherit;font-weight:700;cursor:pointer;display:flex;justify-content:space-between}
+.tg-steps,.tg-p,.tg-list,.tg-acts{margin:0 12px 10px;font-size:14px;line-height:1.6}.tg-row{display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid #eef1f3}.tg-acts{display:flex;gap:8px;flex-wrap:wrap}.tg-steps code{background:#eef3f6;padding:1px 5px;border-radius:3px;font-size:12px}
 .ord-badge{display:inline-block;background:#d77a35;color:#fff;border-radius:10px;font-size:12px;font-weight:800;padding:1px 7px;margin-left:6px;vertical-align:middle}
 @media(max-width:900px){.ord-head{grid-template-columns:1fr 1fr;}.ord-body{grid-template-columns:1fr}}`;
   document.head.appendChild(sst);
@@ -224,6 +226,49 @@
     } catch (e) { loadErr = e.message; }
     draw();
   }
+  // ---------- Telegram alerts setup ----------
+  let tg = { open: false, st: null, found: null, msg: '', busy: false };
+  const tgCall = async (path, opts = {}) => {
+    const res = await fetch(API + path, { ...opts, headers: { authorization: 'Bearer ' + staffToken(), 'content-type': 'application/json' }, cache: 'no-store' });
+    const d = await res.json().catch(() => ({}));
+    if (!res.ok || d.error) throw new Error(d.error || ('Алдаа ' + res.status));
+    return d;
+  };
+  async function tgLoad() { try { tg.st = await tgCall('/api/telegram'); } catch (e) { tg.st = { error: e.message, chats: [] }; } draw(); }
+  function tgHtml() {
+    const s = tg.st;
+    const head = !s ? '🔔 Telegram мэдэгдэл…' : !s.configured ? '🔕 Telegram мэдэгдэл тохируулаагүй'
+      : s.chats.length ? `🔔 Telegram: ${s.chats.length} чат руу мэдэгдэл очно` : '🔕 Telegram: чат холбогдоогүй';
+    let h = `<div class="tg-box"><button type="button" class="tg-head" data-tg="toggle">${esc(head)} <span>${tg.open ? '▲' : '▼'}</span></button>`;
+    if (tg.open && s) {
+      if (!s.configured) {
+        h += `<ol class="tg-steps"><li>Telegram дээр <b>@BotFather</b> → <code>/newbot</code> → нэр: <i>Buddy Shop Orders</i> → бот үүсгээд token-ийг хуулна.</li>
+          <li>Terminal: <code>cd ~/src/Buddy-Show-Web/buddy-shop-api && npx wrangler secret put TELEGRAM_BOT_TOKEN</code> → token-оо буулгана.</li>
+          <li>Энэ хуудсыг шинэчлээд дахин нээнэ.</li></ol>`;
+      } else {
+        h += `<p class="tg-p">Бот: ${s.bot ? `<a href="https://t.me/${esc(s.bot)}" target="_blank" rel="noopener">@${esc(s.bot)}</a>` : esc(s.error || '')}.
+          Мэдэгдэл авах хүн бот руу <b>/start</b> гэж бичнэ (эсвэл ботыг ажилчдын группт нэмээд тэнд нэг мессеж бичнэ), дараа нь «Чат хайх» дарна.</p>
+          <div class="tg-list">${s.chats.map(c => `<div class="tg-row"><span>✅ ${esc(c.title)}</span><button type="button" data-tg="off" data-id="${esc(c.id)}">Салгах</button></div>`).join('') || '<div class="tg-p">Холбогдсон чат алга.</div>'}</div>
+          ${tg.found ? `<div class="tg-list">${tg.found.filter(c => !s.chats.some(x => x.id === c.id)).map(c => `<div class="tg-row"><span>${c.type === 'private' ? '👤' : '👥'} ${esc(c.title)}</span><button type="button" data-tg="on" data-id="${esc(c.id)}" data-title="${esc(c.title)}">Холбох</button></div>`).join('') || '<div class="tg-p">Шинэ чат олдсонгүй. Бот руу /start гэж бичээд дахин хайна уу.</div>'}</div>` : ''}
+          <div class="tg-acts"><button type="button" data-tg="find">🔍 Чат хайх</button>${s.chats.length ? '<button type="button" data-tg="test">Туршилтын мэдэгдэл илгээх</button>' : ''}</div>`;
+      }
+      if (tg.msg) h += `<div class="tg-p" style="color:#1f5f3a">${esc(tg.msg)}</div>`;
+    }
+    return h + '</div>';
+  }
+  panel.addEventListener('click', async e => {
+    const b = e.target.closest('[data-tg]'); if (!b || tg.busy) return;
+    const a = b.dataset.tg; tg.msg = '';
+    if (a === 'toggle') { tg.open = !tg.open; draw(); if (tg.open) tgLoad(); return; }
+    tg.busy = true; b.disabled = true;
+    try {
+      if (a === 'find') { tg.found = (await tgCall('/api/telegram/find')).chats; }
+      if (a === 'on' || a === 'off') { const d = await tgCall('/api/telegram/chats', { method: 'POST', body: JSON.stringify({ id: b.dataset.id, title: b.dataset.title, on: a === 'on' }) }); tg.st.chats = d.chats; tg.msg = a === 'on' ? 'Холбогдлоо — тэр чат руу баталгаажуулах мессеж очлоо.' : 'Салгалаа.'; }
+      if (a === 'test') { const d = await tgCall('/api/telegram/test', { method: 'POST' }); tg.msg = `${d.sent} чат руу туршилтын мэдэгдэл илгээлээ.`; }
+    } catch (err) { tg.msg = '⚠ ' + err.message; }
+    tg.busy = false; draw();
+  });
+
   async function update(id, body) {
     const res = await fetch(API + '/api/orders/' + id, { method: 'PUT', headers: { authorization: 'Bearer ' + staffToken(), 'content-type': 'application/json' }, body: JSON.stringify(body) });
     const d = await res.json().catch(() => ({}));
@@ -237,7 +282,7 @@
     const list = all.filter(o => filter === 'all' ? true : filter === 'open' ? OPEN.includes(o.status) : o.status === filter);
     const pages = Math.max(1, Math.ceil(list.length / PER)); page = Math.min(page, pages - 1);
     const chips = [['open', 'Идэвхтэй', all.filter(o => OPEN.includes(o.status)).length], ...Object.keys(S).map(k => [k, S[k], n(k)]), ['all', 'Бүгд', all.length]];
-    panel.innerHTML = `<div class="eyebrow">ORDERS</div><h2>Захиалгууд ${n('new') ? `<span class="ord-badge">${n('new')} шинэ</span>` : ''}</h2>
+    panel.innerHTML = `<div class="eyebrow">ORDERS</div><h2>Захиалгууд ${n('new') ? `<span class="ord-badge">${n('new')} шинэ</span>` : ''}</h2>${tgHtml()}
       <div class="bar">${chips.map(([k, l, c]) => `<button type="button" data-f="${k}" class="${filter === k ? 'on' : ''}">${esc(l)} (${c})</button>`).join('')}<button type="button" data-r>↻ Шинэчлэх</button></div>
       ${loadErr ? `<div class="co-err">${esc(loadErr)}</div>` : ''}
       ${!data ? '' : !list.length ? '<p class="note">Захиалга алга.</p>' : list.slice(page * PER, page * PER + PER).map(o => `<div class="ord-row">
@@ -269,7 +314,7 @@
   let was = false;
   setInterval(() => {
     const now = document.body.classList.contains('staff-signed-in');
-    if (now && !was) load();
+    if (now && !was) { load(); tgLoad(); }
     was = now;
   }, 1500);
   setInterval(() => { if (document.body.classList.contains('staff-signed-in') && document.visibilityState === 'visible' && !openId) load(); }, 60000);

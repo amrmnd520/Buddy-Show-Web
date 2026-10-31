@@ -106,3 +106,9 @@ npx wrangler deploy
   New-order email to info@buddyshop.mn (or `ORDER_NOTIFY`), Telegram if `TELEGRAM_BOT_TOKEN` + `TELEGRAM_CHAT_ID` are set, confirmation email to the customer.
 - `GET /api/orders`, `PUT /api/orders/:id {status, staffNote}` (staff): Admin → «Захиалгууд».
   Statuses: new, confirmed, paid, shipping, done, cancelled. Prices are the ones shown on the site; staff confirm before payment.
+
+## Telegram alerts
+
+`TELEGRAM_BOT_TOKEN` secret (bot made with @BotFather). Staff choose the chats in Admin → «Захиалгууд» → 🔔 Telegram:
+write /start to the bot (or add it to a group), «Чат хайх», «Холбох». Chats are kept in R2 `settings/telegram.json`.
+Staff API: `GET /api/telegram`, `GET /api/telegram/find`, `POST /api/telegram/chats {id,title,on}`, `POST /api/telegram/test`.

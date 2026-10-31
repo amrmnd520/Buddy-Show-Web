@@ -1,3 +1,4 @@
+import { notify } from './telegram.js';
 // Orders placed from the website cart (Cloudflare D1, table "orders").
 // A customer — signed in or not — sends the cart with name, phone and delivery
 // address. Staff are told by email (info@buddyshop.mn) and, if configured, Telegram;
@@ -61,14 +62,7 @@ async function mail(env, to, subject, html, text) {
   });
   if (!res.ok) console.error('resend', res.status, await res.text().catch(() => ''));
 }
-async function telegram(env, text) {
-  if (!env.TELEGRAM_BOT_TOKEN || !env.TELEGRAM_CHAT_ID) return;
-  const res = await fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
-    method: 'POST', headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ chat_id: env.TELEGRAM_CHAT_ID, text, disable_web_page_preview: true }),
-  });
-  if (!res.ok) console.error('telegram', res.status, await res.text().catch(() => ''));
-}
+const telegram = (env, text) => notify(env, text);
 
 function itemLine(i) {
   return `${i.name}${i.size ? ` (${i.size})` : ''}${i.colorCode ? ` [өнгө ${i.colorCode}]` : ''}${i.code ? ` · код ${i.code}` : ''} — ${money(i.price)} × ${i.qty}`;

@@ -4,6 +4,7 @@
 
 import { syncErp, getErp, getCatalog, syncTop, getTop, setDismissed } from './erp.js';
 import { track, stats, prune } from './stats.js';
+import * as tg from './telegram.js';
 import { createOrder, listOrders, updateOrder } from './orders.js';
 import { customerId, requestCode, verifyCode, passwordLogin, getAccount, updateAccount, deleteAccount, listCustomers, pruneCodes } from './customers.js';
 
@@ -184,6 +185,14 @@ export default {
       if (!user) return fail(401, 'Дахин нэвтэрнэ үү');
       if (request.method === 'GET' && path === '/api/me') return json({ user });
       if (request.method === 'POST' && path === '/api/upload') return uploadImage(request, env, url, user);
+      if (path.startsWith('/api/telegram')) {
+        try {
+          if (request.method === 'GET' && path === '/api/telegram') return json(await tg.status(env), 200, { 'cache-control': 'no-store' });
+          if (request.method === 'GET' && path === '/api/telegram/find') return json(await tg.findChats(env), 200, { 'cache-control': 'no-store' });
+          if (request.method === 'POST' && path === '/api/telegram/chats') return json({ chats: await tg.setChat(env, await request.json().catch(() => ({}))) });
+          if (request.method === 'POST' && path === '/api/telegram/test') return json(await tg.test(env));
+        } catch (e) { return fail(400, e.message); }
+      }
       if (request.method === 'GET' && path === '/api/orders') return json(await listOrders(env, url), 200, { 'cache-control': 'no-store' });
       const om = path.match(/^\/api\/orders\/(\d+)$/);
       if (om && request.method === 'PUT') { const r = await updateOrder(request, env, Number(om[1]), user); return json(r[1], r[0]); }

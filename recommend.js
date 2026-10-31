@@ -74,7 +74,11 @@
   st.textContent = `
 .rec{grid-column:1/-1;margin-top:26px;padding-top:20px;border-top:1px solid #e3e7e9}
 .rec h3{margin:0 0 12px;font-size:20px}
-.rec-row{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(150px,1fr);gap:14px;overflow-x:auto;scroll-snap-type:x mandatory;padding-bottom:6px}
+.rec-wrap{position:relative}
+.rec-row{display:grid;grid-auto-flow:column;grid-auto-columns:calc((100% - 56px) / 5);gap:14px;overflow-x:auto;scroll-snap-type:x mandatory;scroll-behavior:smooth;padding-bottom:8px;scrollbar-width:thin;-webkit-overflow-scrolling:touch}
+.rec-nav{position:absolute;top:38%;width:36px;height:36px;border-radius:50%;border:1px solid #cfd6da;background:#fff;box-shadow:0 2px 8px rgba(0,0,0,.15);font-size:20px;line-height:1;cursor:pointer;z-index:2}
+.rec-nav.l{left:-12px}.rec-nav.r{right:-12px}.rec-nav[disabled]{display:none}
+.rec-card.fresh{animation:recIn .5s ease}@keyframes recIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
 .rec-card{scroll-snap-align:start;border:1px solid #e3e7e9;border-radius:8px;background:#fff;padding:10px;cursor:pointer;text-align:left;font:inherit;color:inherit;display:flex;flex-direction:column;gap:4px;min-width:0}
 .rec-card:hover{border-color:#10202c}
 .rec-card img{width:100%;aspect-ratio:1;object-fit:contain;background:#fff}
@@ -82,8 +86,18 @@
 .rec-card .n{font-size:13px;line-height:1.35;font-weight:600;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;min-height:35px}
 .rec-card .p{font-weight:800;font-size:15px}
 .rec-card .t{font-size:11px;color:#1f5f3a;background:#eef7f0;border-radius:10px;padding:1px 7px;align-self:flex-start}
-@media(max-width:700px){.rec-row{grid-auto-columns:42%}}`;
+@media(max-width:900px){.rec-row{grid-auto-columns:calc((100% - 28px) / 3)}}@media(max-width:600px){.rec-row{grid-auto-columns:calc((100% - 14px) / 2.3)}.rec-nav{display:none}}`;
   document.head.appendChild(st);
+
+  // the list for one product: similar, used-together, similar … (sold-out items lean on similar ones)
+  function picksFor(p) {
+    const sim = similar(p, inStock(p) ? 7 : 10);
+    const tog = together(p, 5, new Set(sim.map(x => x.id)));
+    const picks = [], a = [...sim], b = [...tog];
+    while (picks.length < 12 && (a.length || b.length)) { if (a.length) picks.push([a.shift(), 0]); if (b.length && picks.length < 12) picks.push([b.shift(), 1]); }
+    return picks;
+  }
+  let shown = [], viaRec = null, lastPid = null; // what the row showed last, and the suggestion that was just clicked
 
   function paint() {
     const box = document.getElementById('detail-content');
@@ -92,23 +106,42 @@
     const old = box.querySelector('.rec');
     if (old && old.dataset.pid === String(p.id)) return;
     if (old) old.remove();
-    const sim = similar(p, inStock(p) ? 4 : 6);
-    const tog = together(p, 4, new Set(sim.map(x => x.id)));
-    // alternate: similar, used-together, similar … (sold-out items lean on similar ones)
-    const picks = [], a = [...sim], b = [...tog];
-    while (picks.length < 8 && (a.length || b.length)) { if (a.length) picks.push([a.shift(), 0]); if (b.length && picks.length < 8) picks.push([b.shift(), 1]); }
+    let picks = picksFor(p), freshIds = new Set();
+    // opened from a suggestion: only the first two places get new items, the rest stay (so the
+    // customer keeps seeing what was there and gets two new ideas each time)
+    if (viaRec === Number(p.id) && shown.length) {
+      const keep = shown.filter(([x]) => x.id !== p.id && usable(x));
+      const keepIds = new Set(keep.map(([x]) => x.id));
+      const fresh = picks.filter(([x]) => !keepIds.has(x.id) && Number(x.id) !== lastPid).slice(0, 2);
+      fresh.forEach(([x]) => freshIds.add(x.id));
+      const used = new Set([...freshIds, ...keepIds]);
+      picks = [...fresh, ...keep, ...picks.filter(([x]) => !used.has(x.id))].slice(0, 12);
+    }
+    viaRec = null; shown = picks; lastPid = Number(p.id);
     if (!picks.length) return;
     const sec = document.createElement('section'); sec.className = 'rec'; sec.dataset.pid = String(p.id);
-    sec.innerHTML = `<h3>${inStock(p) ? 'Танд таалагдаж магадгүй' : 'Оронд нь авч болох бараа'}</h3><div class="rec-row">${picks.map(([x, k]) => `
-      <button type="button" class="rec-card" data-rec="${x.id}"><img src="${esc(x.image)}" alt="" loading="lazy"><span class="b">${esc(x.brand || '')}</span>
-      <span class="n">${esc(x.name)}</span><span class="p">${fmt(x.price)}</span>${k ? '<span class="t">Хамт хэрэглэх</span>' : ''}</button>`).join('')}</div>`;
+    sec.innerHTML = `<h3>${inStock(p) ? 'Танд таалагдаж магадгүй' : 'Оронд нь авч болох бараа'}</h3><div class="rec-wrap">
+      <button type="button" class="rec-nav l" aria-label="Өмнөх" data-nav="-1" disabled>‹</button><div class="rec-row">${picks.map(([x, k]) => `
+      <button type="button" class="rec-card${freshIds.has(x.id) ? ' fresh' : ''}" data-rec="${x.id}"><img src="${esc(x.image)}" alt="" loading="lazy"><span class="b">${esc(x.brand || '')}</span>
+      <span class="n">${esc(x.name)}</span><span class="p">${fmt(x.price)}</span>${k ? '<span class="t">Хамт хэрэглэх</span>' : ''}</button>`).join('')}</div>
+      <button type="button" class="rec-nav r" aria-label="Дараах" data-nav="1">›</button></div>`;
+    const row = sec.querySelector('.rec-row');
+    const navs = () => {
+      sec.querySelector('.l').disabled = row.scrollLeft < 5;
+      sec.querySelector('.r').disabled = row.scrollLeft + row.clientWidth > row.scrollWidth - 5;
+    };
+    row.addEventListener('scroll', navs, { passive: true });
     sec.addEventListener('click', e => {
+      const n = e.target.closest('[data-nav]');
+      if (n) { row.scrollBy({ left: Number(n.dataset.nav) * row.clientWidth, behavior: 'smooth' }); return; }
       const c = e.target.closest('[data-rec]'); if (!c) return;
-      if (typeof openProduct === 'function') openProduct(Number(c.dataset.rec));
+      viaRec = Number(c.dataset.rec);
+      if (typeof openProduct === 'function') openProduct(viaRec);
       const d = document.getElementById('product-detail');
       [d, d && d.firstElementChild, box].forEach(el => el && el.scrollTo && el.scrollTo({ top: 0, behavior: 'smooth' }));
     });
     box.appendChild(sec);
+    requestAnimationFrame(navs);
   }
   const box = document.getElementById('detail-content');
   if (box) new MutationObserver(() => { const r = box.querySelector('.rec'); if (!r || r.dataset.pid !== String(detailProductId)) paint(); }).observe(box, { childList: true });

@@ -57,6 +57,8 @@
   async function loadOverlay() {
     const data = await api('/api/products', { cache: 'no-store' });
     applyOverlay(data);
+    // ERP prices/stock (erp-sync.js) go in before the baseline so they never count as unsaved edits.
+    if (window.applyErp) { try { await window.applyErp(products); } catch (e) {} }
     base = snapshot();
     ready = true;
     redraw();

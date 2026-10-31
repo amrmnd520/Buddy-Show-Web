@@ -74,3 +74,18 @@ window.BUDDY_API = 'https://buddy-shop-api.amrmnd.workers.dev';
 
 - Нэг барааг хоёр хүн яг зэрэг засвал сүүлд хадгалсных нь үлдэнэ.
 - `site-settings.js` (лого, онцлох бараа, цэс) хуучин шигээ эзэн нь удирдана.
+
+## ERP (Odoo) холболт — үнэ, Emart-ийн үлдэгдэл
+
+15 минут тутам Odoo-оос (`erpdb`, WH/Stock = Buddy/Emart) барааны **үнэ** болон **үлдэгдлийг** татаж, сайт дээр кодоор нь тааруулж шинэчилнэ.
+- Үнэ, үлдэгдэл ERP-ээс ирдэг тул admin дээр гараар засахад дараагийн ачаалалтаар ERP-ийнхээр солигдоно.
+- Үлдэгдэл 0 бараа жагсаалтад хэвийн харагдана, дэлгэрэнгүй хуудсанд «Үлдэгдэлгүй» гэж гарч сагсанд нэмэгдэхгүй.
+- Кодгүй, эсвэл ERP-д олдоогүй кодтой бараа өөрчлөгдөхгүй.
+
+Нэг удаа тохируулах (Terminal):
+```
+npx wrangler secret put ODOO_LOGIN      # Odoo нэвтрэх имэйл
+npx wrangler secret put ODOO_PASSWORD   # Odoo нууц үг
+npx wrangler deploy
+```
+Шалгах: `https://buddy-shop-api.taimenlodge.workers.dev/api/erp/status`

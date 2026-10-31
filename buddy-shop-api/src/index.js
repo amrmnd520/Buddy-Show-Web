@@ -2,6 +2,8 @@
 // Stores products that were added, edited or deleted by staff on top of the
 // site's catalog.js, and serves product photos uploaded from the admin page.
 
+import { syncErp, getErp } from './erp.js';
+
 const JSON_HEADERS = { 'content-type': 'application/json; charset=utf-8' };
 const CORS = {
   'access-control-allow-origin': '*',
@@ -144,11 +146,23 @@ export default {
       if (request.method === 'GET' && path.startsWith('/img/')) return serveImage(env, decodeURIComponent(path.slice(5)));
       if (request.method === 'GET' && path === '/api/products') return listProducts(env);
       if (request.method === 'POST' && path === '/api/login') return login(request, env);
+      if (request.method === 'GET' && path === '/api/erp') {
+        return new Response(await getErp(env), { headers: { ...JSON_HEADERS, ...CORS, 'cache-control': 'public, max-age=300' } });
+      }
+      if (request.method === 'GET' && path === '/api/erp/status') {
+        const d = JSON.parse(await getErp(env));
+        const e = await env.IMAGES.get('erp/error.json');
+        return json({ updatedAt: d.updatedAt, count: d.count, ms: d.ms, lastError: e ? JSON.parse(await e.text()) : null }, 200, { 'cache-control': 'no-store' });
+      }
 
       const user = await whoIs(request, env);
       if (!user) return fail(401, 'Дахин нэвтэрнэ үү');
       if (request.method === 'GET' && path === '/api/me') return json({ user });
       if (request.method === 'POST' && path === '/api/upload') return uploadImage(request, env, url, user);
+      if (request.method === 'POST' && path === '/api/erp/sync') {
+        try { return json({ ok: true, ...(await syncErp(env)) }); }
+        catch (e) { await saveErpError(env, e); return fail(502, e.message); }
+      }
       const m = path.match(/^\/api\/products\/(\d+)$/);
       if (m) {
         const id = productId(m[1]);
@@ -162,4 +176,18 @@ export default {
       return fail(500, 'Серверийн алдаа');
     }
   },
+
+  // Every 15 minutes: copy prices and shop stock from Odoo (see erp.js).
+  async scheduled(event, env, ctx) {
+    ctx.waitUntil(syncErp(env).then(
+      async (r) => { console.log('erp sync', r); await env.IMAGES.delete('erp/error.json'); },
+      (e) => saveErpError(env, e),
+    ));
+  },
 };
+
+async function saveErpError(env, e) {
+  console.error('erp sync failed', e);
+  await env.IMAGES.put('erp/error.json', JSON.stringify({ at: new Date().toISOString(), error: String(e && e.message || e) }),
+    { httpMetadata: { contentType: 'application/json' } }).catch(() => {});
+}

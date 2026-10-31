@@ -2,6 +2,16 @@ name = "buddy-shop-api"
 main = "src/index.js"
 compatibility_date = "2026-10-01"
 
+# Odoo ERP → prices and Emart (WH/Stock) stock, every 15 minutes
+[triggers]
+crons = ["*/15 * * * *"]
+
+[vars]
+ODOO_URL = "http://103.50.205.135:9909"
+ODOO_DB = "erpdb"
+ODOO_LOCATION_ID = "8"   # WH/Stock (Buddy / Emart)
+ODOO_COMPANY_ID = "1"    # Buddy shop
+
 [[d1_databases]]
 binding = "DB"
 database_name = "buddy-shop"
@@ -14,3 +24,5 @@ bucket_name = "buddy-shop-images"
 # Secrets (set with `npx wrangler secret put NAME`, never written here):
 #   USERS        = {"amarmend":"password1","bat":"password2"}
 #   TOKEN_SECRET = long random string
+#   ODOO_LOGIN    = Odoo login (email)
+#   ODOO_PASSWORD = Odoo password

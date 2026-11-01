@@ -1,16 +1,23 @@
 import { notify } from './telegram.js';
+import * as qpay from './qpay.js';
+import { getErp } from './erp.js';
 // Orders placed from the website cart (Cloudflare D1, table "orders").
 // A customer — signed in or not — sends the cart with name, phone and delivery
 // address. Staff are told by email (info@buddyshop.mn) and, if configured, Telegram;
 // the customer gets a confirmation email. Staff follow each order in the admin
-// page and move it through the statuses below. Payment (QPay) comes later.
+// page and move it through the statuses below.
+// Payment: «QPay-ээр төлөх» makes a QPay invoice (QR + bank apps). Such orders are announced to
+// staff only once the payment is confirmed; «Дараа төлөх» orders are announced straight away.
+// Prices are taken from the ERP by product code when the code is known (the site's price is only
+// used for products without an ERP code — those lines are flagged for staff to check).
 
 export const STATUS = {
   new: 'Шинэ', confirmed: 'Баталгаажсан', paid: 'Төлбөр төлөгдсөн', shipping: 'Хүргэлтэнд гарсан',
   done: 'Хүргэгдсэн', cancelled: 'Цуцалсан',
 };
 const COLS = { number: 'TEXT', name: 'TEXT', phone: 'TEXT', email: 'TEXT', address: 'TEXT', addr: 'TEXT',
-  delivery: 'TEXT', staff_note: 'TEXT', updated_at: 'TEXT', updated_by: 'TEXT' };
+  delivery: 'TEXT', staff_note: 'TEXT', updated_at: 'TEXT', updated_by: 'TEXT',
+  pay_method: 'TEXT', pay_key: 'TEXT', qpay_invoice: 'TEXT', paid_amount: 'INTEGER', paid_at: 'TEXT', checked_at: 'INTEGER', price_check: 'TEXT' };
 let ready = false;
 
 export async function ensureOrders(env) {
@@ -37,6 +44,8 @@ export function orderView(o) {
     status: o.status, statusText: STATUS[o.status] || o.status, total: o.total, items: parse(o.items, []),
     name: o.name || '', phone: o.phone || '', email: o.email || '', address: o.address || '',
     delivery: o.delivery || 'delivery', note: o.note || '', customerId: o.customer_id || null,
+    payMethod: o.pay_method || 'later', paid: !!o.paid_at, paidAmount: o.paid_amount || 0, paidAt: o.paid_at || null,
+    priceCheck: o.price_check || null,
   };
 }
 
@@ -103,28 +112,176 @@ export async function createOrder(request, env, customerId) {
   if (phone.replace(/\D/g, '').length < 8) return [400, { error: 'Утасны дугаараа зөв оруулна уу' }];
   if (email && !/^[^\s@]+@[^\s@]+\.[a-z]{2,}$/i.test(email)) return [400, { error: 'Имэйл хаяг буруу байна' }];
   if (delivery === 'delivery' && address.length < 6) return [400, { error: 'Хүргэлтийн хаягаа оруулна уу' }];
+  // prices are decided here, never by the browser: ERP price by the product's own code, otherwise
+  // the price in the site catalog / staff edits
+  let priced;
+  try { priced = await serverPrices(env, items); } catch (e) { console.error('prices', e); return [503, { error: 'Үнэ шалгаж чадсангүй. Түр хүлээгээд дахин оролдоно уу.' }]; }
+  if (priced.missing.length) return [400, { error: 'Сагсанд сайтаас хасагдсан бараа байна. Сагсаа шинэчлээд дахин оролдоно уу.' }];
+  const changed = items.filter((i) => i.sitePrice !== undefined && i.sitePrice !== i.price).length;
+  const priceCheck = changed ? `${changed} барааны үнэ хэрэглэгчийн харснаас өөр байсан — серверийн үнээр тооцов` : 'ok';
   const total = items.reduce((s, i) => s + i.price * i.qty, 0);
   const now = new Date().toISOString();
+  const payQ = b.pay === 'qpay' && qpay.enabled(env) && total > 0;
+  const payKey = crypto.randomUUID().replace(/-/g, '');
 
-  const r = await env.DB.prepare(`INSERT INTO orders (customer_id, created_at, updated_at, status, total, items, note, name, phone, email, address, addr, delivery)
-    VALUES (?1, ?2, ?2, 'new', ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)`)
+  const r = await env.DB.prepare(`INSERT INTO orders (customer_id, created_at, updated_at, status, total, items, note, name, phone, email, address, addr, delivery, pay_method, pay_key, price_check)
+    VALUES (?1, ?2, ?2, 'new', ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)`)
     .bind(customerId || 0, now, total, JSON.stringify(items), note, name, phone, email, address,
-      b.addr && typeof b.addr === 'object' ? JSON.stringify(b.addr).slice(0, 1000) : null, delivery).run();
+      b.addr && typeof b.addr === 'object' ? JSON.stringify(b.addr).slice(0, 1000) : null, delivery, payQ ? 'qpay' : 'later', payKey, priceCheck).run();
   const id = r.meta.last_row_id, number = `BS${1000 + id}`;
   await env.DB.prepare('UPDATE orders SET number = ?1 WHERE id = ?2').bind(number, id).run();
-  const o = orderView({ id, number, created_at: now, status: 'new', total, items: JSON.stringify(items), name, phone, email, address, delivery, note, customer_id: customerId });
+  const row = { id, number, created_at: now, status: 'new', total, items: JSON.stringify(items), name, phone, email, address, delivery, note,
+    customer_id: customerId, pay_method: payQ ? 'qpay' : 'later', price_check: priceCheck };
+  const o = orderView(row);
+
+  if (payQ) {
+    // QPay: staff hear about it when the money arrives (markPaid); the customer gets the QR now
+    try {
+      const callback = `${new URL(request.url).origin}/api/qpay/callback?o=${id}&k=${payKey}`;
+      const inv = await qpay.createInvoice(env, { number, amount: total, phone, callback });
+      await env.DB.prepare('UPDATE orders SET qpay_invoice = ?1 WHERE id = ?2').bind(String(inv.invoice_id), id).run();
+      return [200, { ok: true, order: o, payKey, qpay: {
+        qr: inv.qr_image ? 'data:image/png;base64,' + inv.qr_image : null, text: inv.qr_text || '', link: inv.qPay_shortUrl || '',
+        banks: (Array.isArray(inv.urls) ? inv.urls : []).map((u) => ({ name: u.description || u.name, logo: u.logo, link: u.link })),
+      } }];
+    } catch (e) {
+      // invoice failed: keep the order as «pay later» so it is not lost
+      console.error('qpay invoice', e.message);
+      await env.DB.prepare("UPDATE orders SET pay_method = 'later', staff_note = ?1 WHERE id = ?2").bind('QPay нэхэмжлэх үүсгэж чадсангүй: ' + e.message, id).run();
+      o.payMethod = 'later'; o.qpayError = 'QPay түр ажиллахгүй байна. Захиалга тань бүртгэгдсэн — ажилтан холбогдож төлбөрийг тохирно.';
+    }
+  }
 
   // notifications should never block the order itself
   const jobs = [
     mail(env, env.ORDER_NOTIFY || 'info@buddyshop.mn', `🛒 Шинэ захиалга ${number} — ${money(total)} — ${name}`,
       orderHtml(o, `Сайтаас шинэ захиалга ирлээ: <b>${number}</b>`), `${number}\n${items.map(itemLine).join('\n')}\nНийт ${money(total)}\n${name} ${phone}\n${address}`),
-    telegram(env, `🛒 Шинэ захиалга ${number}\n${items.map(itemLine).join('\n')}\nНийт: ${money(total)}\n\n👤 ${name} · ${phone}${email ? ' · ' + email : ''}\n${delivery === 'pickup' ? '🏬 Дэлгүүрээс авна' : '🚚 ' + address}${note ? '\n📝 ' + note : ''}`),
+    telegram(env, tgText(o, `🛒 Шинэ захиалга ${number} · ⏳ төлбөр хийгдээгүй`)),
   ];
   if (email) jobs.push(mail(env, email, `Таны захиалга ${number} хүлээн авлаа — Buddy Shop`,
     orderHtml(o, `Сайн байна уу${name ? ', ' + esc(name) : ''}! Таны <b>${number}</b> дугаартай захиалгыг хүлээн авлаа. Манай ажилтан удахгүй утсаар холбогдож, төлбөр болон хүргэлтийг баталгаажуулна.`),
     `Таны ${number} захиалгыг хүлээн авлаа. Нийт ${money(total)}. Манай ажилтан удахгүй холбогдоно.`));
   await Promise.allSettled(jobs);
   return [200, { ok: true, order: o }];
+}
+
+// ---------- prices: ERP > staff edits (D1) > site catalog ----------
+const norm = (c) => String(c || '').toUpperCase().replace(/\s+/g, ' ').trim();
+const codesOf = (code) => { const c = norm(code); return c ? [c, ...c.split(/\s*[|;,]\s*/).map(norm)].filter(Boolean) : []; };
+let catalogCache = null; // { at, map: Map(id → product) }
+
+async function siteCatalog(env) {
+  if (catalogCache && Date.now() - catalogCache.at < 3600e3) return catalogCache.map;
+  const site = String(env.SITE_URL || 'https://amrmnd520.github.io/Buddy-Show-Web').replace(/\/+$/, '');
+  const res = await fetch(`${site}/catalog.js?t=${Math.floor(Date.now() / 3600e3)}`, { cf: { cacheTtl: 600 } });
+  if (!res.ok) throw new Error('catalog ' + res.status);
+  const text = await res.text();
+  const list = JSON.parse(text.slice(text.indexOf('['), text.lastIndexOf(']') + 1));
+  const map = new Map(list.map((p) => [Number(p.id), p]));
+  catalogCache = { at: Date.now(), map };
+  return map;
+}
+async function erpPrices(env) {
+  try {
+    const d = JSON.parse(await getErp(env));
+    const m = new Map();
+    for (const [k, v] of Object.entries(d.items || {})) if (Array.isArray(v) && Number(v[0]) > 0) m.set(norm(k), Number(v[0]));
+    return m;
+  } catch { return new Map(); }
+}
+async function serverPrices(env, items) {
+  const [cat, erp] = await Promise.all([siteCatalog(env), erpPrices(env)]);
+  const ids = [...new Set(items.map((i) => i.id))];
+  const staff = new Map();
+  if (ids.length) {
+    const { results } = await env.DB.prepare(`SELECT id, data, deleted FROM products WHERE id IN (${ids.map(() => '?').join(',')})`).bind(...ids).all().catch(() => ({ results: [] }));
+    for (const r of results || []) staff.set(Number(r.id), r.deleted ? null : (() => { try { return JSON.parse(r.data); } catch { return null; } })());
+  }
+  const missing = [];
+  for (const i of items) {
+    const p = staff.has(i.id) ? staff.get(i.id) : cat.get(i.id);
+    if (!p) { missing.push(i.id); continue; }
+    const size = i.size && Array.isArray(p.sizes) ? p.sizes.find((s) => s.label === i.size) : null;
+    if (i.size && Array.isArray(p.sizes) && p.sizes.length && !size) { missing.push(i.id); continue; }
+    const codes = size ? codesOf(size.code) : codesOf(p.code);
+    const fromErp = codes.map((c) => erp.get(c)).find((x) => x > 0);
+    const price = Math.round(fromErp || (size && Number(size.price)) || Number(p.price) || 0);
+    if (!(price > 0)) { missing.push(i.id); continue; }
+    i.sitePrice = i.price; // what the customer saw
+    i.price = price; i.name = String(p.name || i.name).slice(0, 160); i.brand = String(p.brand || '').slice(0, 60);
+    i.code = (size && size.code) || codes[1] || codes[0] || '';
+    i.priceFrom = fromErp ? 'erp' : 'site';
+  }
+  return { missing };
+}
+
+function tgText(o, head) {
+  return `${head}\n${o.items.map(itemLine).join('\n')}\nНийт: ${money(o.total)}${o.priceCheck && o.priceCheck !== 'ok' ? '\n⚠ ' + o.priceCheck : ''}\n\n👤 ${o.name} · ${o.phone}${o.email ? ' · ' + o.email : ''}\n${o.delivery === 'pickup' ? '🏬 Дэлгүүрээс авна' : '🚚 ' + o.address}${o.note ? '\n📝 ' + o.note : ''}`;
+}
+
+// ---------- QPay: confirm a payment ----------
+// QPay's rules: no repeated/cron polling of /payment/check. A payment is checked when QPay calls
+// the callback, or once when the customer (or staff) presses «Төлбөр шалгах» (at most every 10 s).
+async function markPaid(env, row, amount) {
+  const now = new Date().toISOString();
+  const r = await env.DB.prepare(`UPDATE orders SET paid_amount = ?1, paid_at = ?2, updated_at = ?2, updated_by = 'QPay',
+      status = CASE WHEN status = 'new' AND ?1 >= total THEN 'paid' ELSE status END WHERE id = ?3 AND paid_at IS NULL`).bind(amount, now, row.id).run();
+  if (!r.meta.changes) return; // already recorded
+  const o = orderView({ ...row, paid_amount: amount, paid_at: now, status: row.status === 'new' && amount >= row.total ? 'paid' : row.status });
+  const short = amount < o.total ? `\n⚠ Дутуу төлсөн: ${money(amount)} / ${money(o.total)}` : '';
+  await Promise.allSettled([
+    telegram(env, tgText(o, `💳 Төлбөр орлоо · ${o.number} · ${money(amount)}`) + short),
+    mail(env, env.ORDER_NOTIFY || 'info@buddyshop.mn', `💳 Төлбөртэй захиалга ${o.number} — ${money(amount)} — ${o.name}`,
+      orderHtml(o, `QPay-ээр төлбөр орлоо: <b>${o.number}</b> · ${money(amount)}${short ? ' (дутуу!)' : ''}`), `${o.number} төлөгдлөө ${money(amount)}`),
+    o.email ? mail(env, o.email, `Төлбөр баталгаажлаа — ${o.number} — Buddy Shop`,
+      orderHtml(o, `Сайн байна уу${o.name ? ', ' + esc(o.name) : ''}! Таны <b>${o.number}</b> захиалгын <b>${money(amount)}</b> төлбөр амжилттай орлоо. ${o.delivery === 'pickup' ? 'Бараагаа дэлгүүрээс авах цагийг' : 'Хүргэлтийн цагийг'} манай ажилтан утсаар мэдэгдэнэ.`),
+      `${o.number} төлбөр ${money(amount)} орлоо. Баярлалаа!`) : null,
+  ]);
+}
+
+async function checkRow(env, row, force) {
+  if (row.paid_at || !row.qpay_invoice || !qpay.enabled(env)) return;
+  if (!force && row.checked_at && Date.now() - row.checked_at < 10000) return;
+  await env.DB.prepare('UPDATE orders SET checked_at = ?1 WHERE id = ?2').bind(Date.now(), row.id).run();
+  const amount = await qpay.paidAmount(env, row.qpay_invoice);
+  if (amount > 0) await markPaid(env, row, amount);
+}
+
+async function rowByKey(env, id, key) {
+  await ensureOrders(env);
+  const row = await env.DB.prepare('SELECT * FROM orders WHERE id = ?1').bind(id).first();
+  if (!row || !row.pay_key || row.pay_key !== String(key || '')) return null;
+  return row;
+}
+
+// QPay calls this when an invoice is paid (GET or POST). Answer "SUCCESS".
+export async function qpayCallback(env, url) {
+  const row = await rowByKey(env, Number(url.searchParams.get('o')), url.searchParams.get('k'));
+  if (row) { try { await checkRow(env, row, true); } catch (e) { console.error('qpay callback', e.message); } }
+  return new Response('SUCCESS', { status: 200, headers: { 'content-type': 'text/plain' } });
+}
+
+// The checkout page asks our database every few seconds whether the callback has arrived;
+// QPay itself is asked only when the customer presses «Төлбөр шалгах» (check=1).
+export async function payStatus(env, id, key, check) {
+  let row = await rowByKey(env, id, key);
+  if (!row) return [404, { error: 'Захиалга олдсонгүй' }];
+  if (check && !row.paid_at) {
+    try { await checkRow(env, row, false); } catch (e) { console.error('qpay check', e.message); }
+    row = await env.DB.prepare('SELECT * FROM orders WHERE id = ?1').bind(id).first();
+  }
+  return [200, { paid: !!row.paid_at && row.paid_amount >= row.total, short: !!row.paid_at && row.paid_amount < row.total, paidAmount: row.paid_amount || 0, total: row.total, status: row.status }];
+}
+
+// staff: «QPay шалгах» on one order
+export async function staffCheck(env, id) {
+  await ensureOrders(env);
+  const row = await env.DB.prepare('SELECT * FROM orders WHERE id = ?1').bind(id).first();
+  if (!row) return [404, { error: 'Захиалга олдсонгүй' }];
+  if (!row.qpay_invoice) return [400, { error: 'QPay нэхэмжлэхгүй захиалга' }];
+  try { await checkRow(env, row, true); } catch (e) { return [502, { error: e.message }]; }
+  const o = await env.DB.prepare('SELECT * FROM orders WHERE id = ?1').bind(id).first();
+  return [200, { ...orderView(o), staffNote: o.staff_note || '', updatedBy: o.updated_by || '' }];
 }
 
 // ---------- staff ----------

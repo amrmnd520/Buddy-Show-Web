@@ -11,6 +11,8 @@
   const priceOf = item => Number(item.price) || (findP(item.id)?.price || 0);
   const acc = () => window.BuddyAccount;
   let view = 'cart', busy = false, err = '', done = null, form = null; // form: last typed values
+  let payOn = false, paying = null, pollTimer = null; // paying: { order, key, q, checking, msg }
+  fetch(API + '/api/qpay/status').then(r => r.json()).then(d => { payOn = !!d.enabled; if (view !== 'pay') paint(); }).catch(() => {});
 
   const st = document.createElement('style');
   st.textContent = `
@@ -34,6 +36,14 @@
 .co-which label{margin:0;border:1px solid #cfd6da;border-radius:6px;padding:10px;cursor:pointer;display:flex;gap:10px;align-items:flex-start;font-weight:400}
 .co-which input{width:auto;margin-top:3px}.co-which span{display:flex;flex-direction:column;gap:2px}.co-which small{color:#5a6a72;font-size:13px;line-height:1.4}
 .co-which label:has(input:checked){border-color:var(--orange,#d77a35);background:#fff7f0}
+.co-pay{text-align:center}.co-pay h3{margin:0 0 4px}.co-pay .amt{font-size:18px}
+.co-qr{width:230px;max-width:80%;aspect-ratio:1;image-rendering:pixelated;border:1px solid #e3e7e9;border-radius:8px;padding:8px;background:#fff;margin:10px auto;display:block}
+.co-banks{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:10px 0;text-align:center}
+.co-banks a{display:flex;flex-direction:column;align-items:center;gap:4px;font-size:11px;color:inherit;text-decoration:none;border:1px solid #e3e7e9;border-radius:8px;padding:8px 4px;background:#fff}
+.co-banks img{width:36px;height:36px;border-radius:8px;object-fit:contain}
+.co-wait{display:flex;gap:8px;align-items:center;justify-content:center;font-size:13px;color:#5a6a72;margin:10px 0}
+.co-wait .dot{width:10px;height:10px;border-radius:50%;background:#d77a35;animation:coPulse 1s infinite alternate}@keyframes coPulse{from{opacity:.3}to{opacity:1}}
+@media(min-width:900px){.co-banks{grid-template-columns:repeat(5,1fr)}}
 .co-check{display:flex!important;gap:8px;align-items:center;font-weight:400!important}.co-check input{width:auto}`;
   document.head.appendChild(st);
 
@@ -65,9 +75,26 @@
     const showCartRows = view === 'cart';
     if (cartRows) cartRows.style.display = showCartRows ? '' : 'none';
     if (tot) tot.style.display = showCartRows ? '' : 'none';
+    if (view === 'pay' && paying) {
+      const o = paying.order, q = paying.q;
+      area.innerHTML = `<div class="co-pay"><h3>QPay-ээр төлөх</h3>
+        <p class="co-sum">Захиалга <b>${esc(o.number)}</b> · Төлөх дүн <b class="amt">${fmt(o.total)}</b></p>
+        ${q.qr ? `<img class="co-qr" src="${esc(q.qr)}" alt="QPay QR код">` : ''}
+        <p class="co-sum">Банкны апп-аараа QR кодыг уншуулна уу.${q.banks.length ? ' Утсаараа бол доорх банкаа сонгоно уу:' : ''}</p>
+        ${q.banks.length ? `<div class="co-banks">${q.banks.map(b => `<a href="${esc(b.link)}" rel="noopener">${b.logo ? `<img src="${esc(b.logo)}" alt="" loading="lazy">` : ''}<span>${esc(b.name)}</span></a>`).join('')}</div>` : ''}
+        ${q.link ? `<p class="co-sum"><a href="${esc(q.link)}" target="_blank" rel="noopener">QPay холбоосоор нээх ↗</a></p>` : ''}
+        <div class="co-wait"><span class="dot"></span> Төлбөр хүлээж байна… төлсний дараа энэ хэсэг автоматаар шинэчлэгдэнэ.</div>
+        ${paying.msg ? `<div class="co-err">${esc(paying.msg)}</div>` : ''}
+        <button class="co-go" data-co="paycheck" ${paying.checking ? 'disabled' : ''}>${paying.checking ? 'Шалгаж байна…' : 'Төлбөрөө төлсөн — шалгах'}</button>
+        <p class="co-sum">Дараа төлөх бол энэ цонхыг хааж болно — захиалга тань хадгалагдсан, манай ажилтан холбогдоно.</p></div>`;
+      return;
+    }
     if (view === 'done' && done) {
-      area.innerHTML = `<div class="co-ok"><div class="big">✅</div><h3>Захиалга ${esc(done.number)} хүлээн авлаа</h3>
-        <p>Нийт <b>${fmt(done.total)}</b>. Манай ажилтан удахгүй <b>${esc(done.phone)}</b> дугаарт холбогдож, төлбөр болон ${done.delivery === 'pickup' ? 'авах цагийг' : 'хүргэлтийг'} баталгаажуулна.</p>
+      area.innerHTML = `<div class="co-ok"><div class="big">✅</div><h3>${done.paid ? `Төлбөр амжилттай — ${esc(done.number)}` : `Захиалга ${esc(done.number)} хүлээн авлаа`}</h3>
+        ${done.paid
+          ? `<p><b>${fmt(done.paidAmount || done.total)}</b> төлөгдлөө. Баярлалаа! Манай ажилтан <b>${esc(done.phone)}</b> дугаарт ${done.delivery === 'pickup' ? 'бараагаа авах цагийг' : 'хүргэлтийн цагийг'} мэдэгдэнэ.</p>`
+          : `<p>Нийт <b>${fmt(done.total)}</b>. Манай ажилтан удахгүй <b>${esc(done.phone)}</b> дугаарт холбогдож, төлбөр болон ${done.delivery === 'pickup' ? 'авах цагийг' : 'хүргэлтийг'} баталгаажуулна.</p>`}
+        ${done.qpayError ? `<div class="co-err">${esc(done.qpayError)}</div>` : ''}
         ${done.email ? `<p>Баталгаажуулах имэйл ${esc(done.email)} хаяг руу илгээгдлээ.</p>` : ''}
         ${a ? '<p>Захиалга тань «Миний бүртгэл → Захиалгууд» хэсэгт хадгалагдлаа.</p>' : ''}
         <button class="co-go" data-co="close">Дэлгүүр үргэлжлүүлэх</button></div>`;
@@ -76,12 +103,12 @@
     if (!l.length) { area.innerHTML = ''; view = 'cart'; return; }
     if (view === 'cart') {
       area.innerHTML = `<button class="co-go" data-co="checkout">Захиалга өгөх →</button>
-        <p class="co-sum">Төлбөрийг захиалга баталгаажсаны дараа ажилтан мэдэгдэнэ.</p>`;
+        <p class="co-sum">${payOn ? 'QPay-ээр шууд төлөх, эсвэл ажилтантай тохирч дараа төлөх боломжтой.' : 'Төлбөрийг захиалга баталгаажсаны дараа ажилтан мэдэгдэнэ.'}</p>`;
       return;
     }
     // checkout form
     const f = form || {
-      name: a ? a.name : '', phone: a ? a.phone : '', email: a ? a.email : '', delivery: 'delivery', note: '', save: false,
+      name: a ? a.name : '', phone: a ? a.phone : '', email: a ? a.email : '', delivery: 'delivery', note: '', save: false, pay: 'qpay',
     };
     const saved = savedAddr(a);
     const which = saved ? ((form && form.which) || 'saved') : 'new';
@@ -105,9 +132,12 @@
           <div id="co-new" style="${which === 'saved' ? 'display:none' : ''}">${acc() ? acc().addrFields(newSrc) : ''}
             ${a ? `<label class="co-check"><input type="checkbox" id="co-save" ${(saved ? f.save : true) ? 'checked' : ''}> ${saved ? 'Энэ хаягийг үндсэн хаягаа болгож хадгалах' : 'Энэ хаягийг бүртгэлдээ хадгалах'}</label>` : ''}</div></div>
         <label for="co-note">Захиалгын тайлбар</label><textarea id="co-note" maxlength="500" placeholder="Хүргэлтийн цаг, бусад хүсэлт">${esc(f.note)}</textarea>
+        ${payOn ? `<div class="co-sec">Төлбөр</div>
+        <div class="co-which"><label><input type="radio" name="co-pay" value="qpay" ${f.pay !== 'later' ? 'checked' : ''}><span><b>💳 QPay-ээр одоо төлөх</b><small>QR код эсвэл банкны апп-аар шууд</small></span></label>
+          <label><input type="radio" name="co-pay" value="later" ${f.pay === 'later' ? 'checked' : ''}><span><b>🤝 Дараа төлөх</b><small>Ажилтан холбогдож төлбөрийг тохирно</small></span></label></div>` : ''}
         ${err ? `<div class="co-err">${esc(err)}</div>` : ''}
-        <button class="co-go" ${busy ? 'disabled' : ''}>${busy ? 'Илгээж байна…' : `Захиалга илгээх · ${fmt(total(l))}`}</button>
-        <p class="co-sum">Төлбөр: манай ажилтан захиалгыг баталгаажуулаад дансны мэдээлэл өгнө. QPay удахгүй нэмэгдэнэ.</p>
+        <button class="co-go" ${busy ? 'disabled' : ''}>${busy ? 'Илгээж байна…' : payOn && f.pay !== 'later' ? `Захиалаад QPay-ээр төлөх · ${fmt(total(l))}` : `Захиалга илгээх · ${fmt(total(l))}`}</button>
+        ${payOn ? '' : '<p class="co-sum">Төлбөр: манай ажилтан захиалгыг баталгаажуулаад дансны мэдээлэл өгнө.</p>'}
       </form>`;
   }
 
@@ -120,6 +150,7 @@
     return {
       name: g('co-name').trim(), phone: g('co-phone').trim(), email: g('co-email').trim(), note: g('co-note').trim(),
       delivery: way ? way.value : 'delivery', which, save: !!area.querySelector('#co-save')?.checked,
+      pay: (area.querySelector('input[name="co-pay"]:checked') || {}).value || (payOn ? 'qpay' : 'later'),
       addr: which === 'saved' ? { ...a.addr } : (acc() && area.querySelector('#co-new') ? acc().readAddr(area.querySelector('#co-new')) : {}),
     };
   }
@@ -138,8 +169,10 @@
     else if (a === 'back') { form = read(); view = 'cart'; paint(); }
     else if (a === 'login') { form = read(); acc() && acc().open('Нэвтэрсний дараа сагс руугаа буцаж захиалгаа үргэлжлүүлнэ үү.'); }
     else if (a === 'close') { view = 'cart'; done = null; typeof hideCart === 'function' && hideCart(); }
+    else if (a === 'paycheck') pollPay(true);
   });
   area.addEventListener('change', e => {
+    if (e.target.name === 'co-pay') { const b = area.querySelector('.co-go:not([data-co])'); if (b) b.textContent = (e.target.value === 'qpay' ? 'Захиалаад QPay-ээр төлөх · ' : 'Захиалга илгээх · ') + fmt(total(lines())); }
     if (e.target.name === 'co-which') area.querySelector('#co-new').style.display = e.target.value === 'saved' ? 'none' : '';
     if (e.target.name === 'co-way') area.querySelector('#co-addr').style.display = e.target.value === 'pickup' ? 'none' : '';
     if (e.target.id === 'acc-a-city' && acc()) {
@@ -158,10 +191,12 @@
       const headers = { 'content-type': 'application/json' };
       const t = acc() && acc().token(); if (t) headers.authorization = 'Bearer ' + t;
       const res = await fetch(API + '/api/orders', { method: 'POST', headers, body: JSON.stringify({
-        items: l, name: v.name, phone: v.phone, email: v.email, delivery: v.delivery, address, addr: v.delivery === 'pickup' ? null : v.addr, note: v.note }) });
+        items: l, name: v.name, phone: v.phone, email: v.email, delivery: v.delivery, address, addr: v.delivery === 'pickup' ? null : v.addr, note: v.note, pay: payOn ? v.pay : 'later' }) });
       const d = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(d.error || ('Алдаа ' + res.status));
-      done = d.order; view = 'done'; form = null;
+      form = null;
+      if (d.qpay) { paying = { order: d.order, key: d.payKey, q: d.qpay }; view = 'pay'; startPolling(); }
+      else { done = d.order; view = 'done'; }
       cart.length = 0; const c = document.getElementById('count'); if (c) c.textContent = '0';
       const a = acc() && acc().get();
       if (a) {
@@ -175,10 +210,36 @@
     busy = false; paint();
   });
 
+  // QPay: our server is told by QPay's callback; the page only asks our server (every 4 s, for 20 min).
+  // «Төлбөрөө төлсөн — шалгах» asks QPay once (the server allows that at most every 10 s).
+  function startPolling() {
+    clearInterval(pollTimer);
+    const until = Date.now() + 20 * 60e3;
+    pollTimer = setInterval(() => { if (Date.now() > until) clearInterval(pollTimer); else pollPay(false); }, 4000);
+  }
+  async function pollPay(check) {
+    if (!paying) return;
+    if (check) { paying.checking = true; paying.msg = ''; paint(); }
+    try {
+      const r = await fetch(`${API}/api/orders/${paying.order.id}/pay?k=${encodeURIComponent(paying.key)}${check ? '&check=1' : ''}`, { cache: 'no-store' });
+      const d = await r.json().catch(() => ({}));
+      if (d.paid) {
+        clearInterval(pollTimer);
+        done = { ...paying.order, paid: true, paidAmount: d.paidAmount }; paying = null; view = 'done';
+        acc() && acc().get() && acc().reload().catch(() => {});
+      } else if (d.short) {
+        clearInterval(pollTimer);
+        paying.msg = `Дутуу төлөгдсөн: ${fmt(d.paidAmount)} / ${fmt(d.total)}. Манай ажилтан тантай холбогдоно.`;
+      } else if (check) paying.msg = 'Төлбөр хараахан орж ирээгүй байна. Төлсөн бол хэдэн секунд хүлээгээд дахин шалгана уу.';
+    } catch (e) { if (check) paying.msg = 'Холболт тасарлаа, дахин оролдоно уу.'; }
+    if (paying) paying.checking = false;
+    if (check || view === 'done' || (paying && paying.msg)) paint();
+  }
+
   // repaint whenever the cart opens or changes
   if (typeof window.showCart === 'function') {
     const prev = window.showCart;
-    window.showCart = function (...a) { const out = prev.apply(this, a); if (view === 'done') view = 'cart', done = null; try { paint(); } catch (e) {} return out; };
+    window.showCart = function (...a) { const out = prev.apply(this, a); if (view === 'done') view = 'cart', done = null; if (view === 'pay' && cart.length) { view = 'cart'; } try { paint(); } catch (e) {} return out; };
   }
   if (typeof window.removeCart === 'function') {
     const prevR = window.removeCart;
@@ -207,6 +268,7 @@
 .ord-st.new{background:#fff4e5;color:#8a5300}.ord-st.done{background:#eef7f0;color:#1f5f3a}.ord-st.cancelled{background:#fdecea;color:#b42318}
 .tg-box{border:1px solid #e3e7e9;border-radius:8px;margin:8px 0 4px;background:#fafbfc}.tg-head{width:100%;text-align:left;background:none;border:0;padding:10px 12px;font:inherit;font-weight:700;cursor:pointer;display:flex;justify-content:space-between}
 .tg-steps,.tg-p,.tg-list,.tg-acts{margin:0 12px 10px;font-size:14px;line-height:1.6}.tg-row{display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid #eef1f3}.tg-acts{display:flex;gap:8px;flex-wrap:wrap}.tg-steps code{background:#eef3f6;padding:1px 5px;border-radius:3px;font-size:12px}
+.ord-pay{background:#fff4e5;border-radius:6px;padding:6px 10px}.ord-pay.ok{background:#eef7f0;color:#1f5f3a}.ord-pay button{margin-left:8px}.ord-warn{background:#fdecea;color:#b42318;border-radius:6px;padding:6px 10px}
 .ord-badge{display:inline-block;background:#d77a35;color:#fff;border-radius:10px;font-size:12px;font-weight:800;padding:1px 7px;margin-left:6px;vertical-align:middle}
 @media(max-width:900px){.ord-head{grid-template-columns:1fr 1fr;}.ord-body{grid-template-columns:1fr}}`;
   document.head.appendChild(sst);
@@ -269,6 +331,12 @@
     tg.busy = false; draw();
   });
 
+  async function qcheck(id) {
+    const res = await fetch(API + '/api/orders/' + id + '/qpay-check', { method: 'POST', headers: { authorization: 'Bearer ' + staffToken() } });
+    const d = await res.json().catch(() => ({}));
+    if (!res.ok) { loadErr = d.error || 'Шалгаж чадсангүй'; draw(); return; }
+    data.items = data.items.map(o => (o.id === id ? { ...o, ...d } : o)); loadErr = d.paid ? '' : `${d.number}: төлбөр хараахан ороогүй байна.`; draw();
+  }
   async function update(id, body) {
     const res = await fetch(API + '/api/orders/' + id, { method: 'PUT', headers: { authorization: 'Bearer ' + staffToken(), 'content-type': 'application/json' }, body: JSON.stringify(body) });
     const d = await res.json().catch(() => ({}));
@@ -287,13 +355,16 @@
       ${loadErr ? `<div class="co-err">${esc(loadErr)}</div>` : ''}
       ${!data ? '' : !list.length ? '<p class="note">Захиалга алга.</p>' : list.slice(page * PER, page * PER + PER).map(o => `<div class="ord-row">
         <div class="ord-head" data-o="${o.id}"><b>${esc(o.number)}</b><span>${dtm(o.createdAt)}</span><span>${esc(o.name)} · ${esc(o.phone)}</span>
-          <span>${o.delivery === 'pickup' ? '🏬 Очиж авна' : '🚚 Хүргэлт'}</span><span class="n">${fmt(o.total)}</span><span class="ord-st ${esc(o.status)}">${esc(o.statusText)}</span></div>
+          <span>${o.delivery === 'pickup' ? '🏬 Очиж авна' : '🚚 Хүргэлт'}</span><span class="n">${fmt(o.total)}${o.paid ? ' <span title="QPay-ээр төлсөн">💳</span>' : o.payMethod === 'qpay' ? ' <span title="QPay төлбөр хүлээгдэж байна">⏳</span>' : ''}</span><span class="ord-st ${esc(o.status)}">${esc(o.statusText)}</span></div>
         ${openId === o.id ? `<div class="ord-body"><div><table>${o.items.map(i => `<tr><td><img src="${esc(i.image)}" alt="" loading="lazy"></td>
             <td><b>${esc(i.name)}</b>${i.size ? `<br>Хэмжээ: ${esc(i.size)}` : ''}${i.colorCode ? `<br>Өнгө: ${esc(i.colorCode)}` : ''}<br><small>${esc(i.brand)}${i.code ? ' · код ' + esc(i.code) : ''}</small></td>
             <td style="text-align:right;white-space:nowrap">${fmt(i.price)} × ${i.qty}<br><b>${fmt(i.price * i.qty)}</b></td></tr>`).join('')}
             <tr><td></td><td><b>Нийт</b></td><td style="text-align:right"><b>${fmt(o.total)}</b></td></tr></table></div>
           <div><p><b>${esc(o.name)}</b><br>📞 <a href="tel:${esc(o.phone)}">${esc(o.phone)}</a>${o.email ? `<br>✉️ <a href="mailto:${esc(o.email)}">${esc(o.email)}</a>` : ''}${o.customerId ? '<br><small>Бүртгэлтэй хэрэглэгч</small>' : '<br><small>Зочин</small>'}</p>
             <p>${o.delivery === 'pickup' ? '🏬 Дэлгүүрээс очиж авна' : '🚚 ' + esc(o.address)}</p>${o.note ? `<p>📝 ${esc(o.note)}</p>` : ''}
+            <p class="ord-pay ${o.paid ? 'ok' : ''}">${o.paid ? `💳 QPay-ээр төлсөн: <b>${fmt(o.paidAmount)}</b> · ${dtm(o.paidAt)}${o.paidAmount < o.total ? ' — ⚠ дутуу' : ''}`
+              : o.payMethod === 'qpay' ? `⏳ QPay төлбөр хүлээгдэж байна <button type="button" data-qc="${o.id}">QPay шалгах</button>` : '🤝 Дараа төлөх — ажилтан төлбөрийг тохирно'}</p>
+            ${o.priceCheck && o.priceCheck !== 'ok' ? `<p class="ord-warn">⚠ ${esc(o.priceCheck)}</p>` : ''}
             <label style="font-weight:700;font-size:13px">Төлөв</label><select data-st="${o.id}" style="width:100%;padding:8px;margin:4px 0 10px">${Object.keys(S).map(k => `<option value="${k}" ${k === o.status ? 'selected' : ''}>${esc(S[k])}</option>`).join('')}</select>
             <label style="font-weight:700;font-size:13px">Ажилтны тэмдэглэл</label><textarea data-sn="${o.id}" placeholder="Зөвхөн ажилтнуудад харагдана">${esc(o.staffNote)}</textarea>
             <button type="button" data-save="${o.id}" style="margin-top:6px">Тэмдэглэл хадгалах</button>
@@ -305,6 +376,7 @@
     if (t.closest('[data-f]')) { filter = t.closest('[data-f]').dataset.f; page = 0; draw(); }
     else if (t.closest('[data-r]')) load();
     else if (t.closest('[data-p]')) { page += Number(t.closest('[data-p]').dataset.p); draw(); }
+    else if (t.closest('[data-qc]')) { const b = t.closest('[data-qc]'); b.disabled = true; b.textContent = 'Шалгаж байна…'; qcheck(Number(b.dataset.qc)); }
     else if (t.closest('[data-save]')) { const id = Number(t.closest('[data-save]').dataset.save); update(id, { staffNote: panel.querySelector(`[data-sn="${id}"]`).value }); }
     else if (t.closest('.ord-head')) { const id = Number(t.closest('.ord-head').dataset.o); openId = openId === id ? null : id; draw(); }
   });

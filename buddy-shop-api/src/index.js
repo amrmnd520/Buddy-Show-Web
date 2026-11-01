@@ -5,7 +5,8 @@
 import { syncErp, getErp, getCatalog, syncTop, getTop, setDismissed } from './erp.js';
 import { track, stats, prune } from './stats.js';
 import * as tg from './telegram.js';
-import { createOrder, listOrders, updateOrder } from './orders.js';
+import * as qpay from './qpay.js';
+import { createOrder, listOrders, updateOrder, qpayCallback, payStatus, staffCheck } from './orders.js';
 import { customerId, requestCode, verifyCode, passwordLogin, getAccount, updateAccount, deleteAccount, listCustomers, pruneCodes } from './customers.js';
 
 const JSON_HEADERS = { 'content-type': 'application/json; charset=utf-8' };
@@ -160,6 +161,14 @@ export default {
         return json({ updatedAt: d.updatedAt, count: d.count, ms: d.ms, lastError: e ? JSON.parse(await e.text()) : null }, 200, { 'cache-control': 'no-store' });
       }
 
+      // ---- QPay ----
+      if (path === '/api/qpay/callback') return qpayCallback(env, url);
+      if (path === '/api/qpay/status') return json({ enabled: qpay.enabled(env) }, 200, { 'cache-control': 'public, max-age=300' });
+      const pm = path.match(/^\/api\/orders\/(\d+)\/pay$/);
+      if (pm && request.method === 'GET') {
+        const r = await payStatus(env, Number(pm[1]), url.searchParams.get('k'), url.searchParams.get('check') === '1');
+        return json(r[1], r[0], { 'cache-control': 'no-store' });
+      }
       // ---- orders from the website cart (signed-in customer optional) ----
       if (request.method === 'POST' && path === '/api/orders') {
         const r = await createOrder(request, env, await customerId(request, env));
@@ -194,6 +203,8 @@ export default {
         } catch (e) { return fail(400, e.message); }
       }
       if (request.method === 'GET' && path === '/api/orders') return json(await listOrders(env, url), 200, { 'cache-control': 'no-store' });
+      const qc = path.match(/^\/api\/orders\/(\d+)\/qpay-check$/);
+      if (qc && request.method === 'POST') { const r = await staffCheck(env, Number(qc[1])); return json(r[1], r[0]); }
       const om = path.match(/^\/api\/orders\/(\d+)$/);
       if (om && request.method === 'PUT') { const r = await updateOrder(request, env, Number(om[1]), user); return json(r[1], r[0]); }
       if (request.method === 'GET' && path === '/api/customers') return json({ items: await listCustomers(env) }, 200, { 'cache-control': 'no-store' });

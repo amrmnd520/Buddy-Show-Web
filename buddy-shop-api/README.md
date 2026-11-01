@@ -112,3 +112,15 @@ npx wrangler deploy
 `TELEGRAM_BOT_TOKEN` secret (bot made with @BotFather). Staff choose the chats in Admin → «Захиалгууд» → 🔔 Telegram:
 write /start to the bot (or add it to a group), «Чат хайх», «Холбох». Chats are kept in R2 `settings/telegram.json`.
 Staff API: `GET /api/telegram`, `GET /api/telegram/find`, `POST /api/telegram/chats {id,title,on}`, `POST /api/telegram/test`.
+
+## QPay (merchant API v2)
+
+Secrets `QPAY_USERNAME`, `QPAY_PASSWORD`, `QPAY_INVOICE_CODE`. With them set, checkout offers «QPay-ээр одоо төлөх»:
+`POST /api/orders {pay:"qpay"}` creates a QPay invoice (sender_invoice_no = order number) and returns the QR + bank app links.
+QPay calls `/api/qpay/callback?o=<id>&k=<key>`; the payment is then confirmed with `/v2/payment/check` before the order
+becomes «Төлбөр төлөгдсөн» (an under-payment is recorded but not marked paid). Following QPay's rules there is no cron polling:
+the checkout page only reads our database (`GET /api/orders/:id/pay?k=`), and asks QPay once on «Төлбөрөө төлсөн — шалгах»
+(`&check=1`, at most every 10 s). Staff: `POST /api/orders/:id/qpay-check`. QPay orders are announced (Telegram/email) when paid.
+
+Prices are always decided on the server: ERP price by the product's code (size code for size options), otherwise the
+price in staff edits (D1) or the site's catalog.js. What the browser sends is ignored.

@@ -8,10 +8,13 @@ let tok = null; // { token, until } — kept while this worker instance lives
 
 export const enabled = (env) => !!(env.QPAY_USERNAME && env.QPAY_PASSWORD && env.QPAY_INVOICE_CODE);
 
+// base64 of UTF-8 (btoa alone fails on non-Latin letters)
+const basic = (s) => btoa(String.fromCharCode(...new TextEncoder().encode(s)));
+
 async function token(env) {
   if (tok && Date.now() < tok.until) return tok.token;
   const res = await fetch(base(env) + '/auth/token', {
-    method: 'POST', headers: { authorization: 'Basic ' + btoa(`${String(env.QPAY_USERNAME).trim()}:${String(env.QPAY_PASSWORD).trim()}`) },
+    method: 'POST', headers: { authorization: 'Basic ' + basic(`${String(env.QPAY_USERNAME).trim()}:${String(env.QPAY_PASSWORD).trim()}`) },
   });
   const d = await res.json().catch(() => ({}));
   if (!res.ok || !d.access_token) throw new Error('QPay нэвтрэлт амжилтгүй (' + (d.message || d.error || res.status) + ')');

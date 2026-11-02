@@ -246,6 +246,21 @@
     const prev = window.showCart;
     window.showCart = function (...a) { const out = prev.apply(this, a); if (view === 'done') view = 'cart', done = null; if (view === 'pay' && cart.length) { view = 'cart'; } try { paint(); } catch (e) {} return out; };
   }
+  // «Сагсанд нэмэх» on the product page: go straight to the cart (the product window closes).
+  if (typeof window.addDetailProduct === 'function') {
+    const prevAdd = window.addDetailProduct;
+    window.addDetailProduct = function (...a) {
+      const before = typeof cart !== 'undefined' ? cart.length : 0;
+      const out = prevAdd.apply(this, a);
+      try {
+        if (typeof cart !== 'undefined' && cart.length > before && typeof showCart === 'function') {
+          const dlg = document.getElementById('product-detail'); // a modal dialog sits above everything: close it first
+          setTimeout(() => { if (dlg && dlg.open) dlg.close(); view = 'cart'; done = null; showCart(); }, 250);
+        }
+      } catch (e) {}
+      return out;
+    };
+  }
   if (typeof window.removeCart === 'function') {
     const prevR = window.removeCart;
     window.removeCart = function (...a) { const out = prevR.apply(this, a); try { paint(); } catch (e) {} return out; };

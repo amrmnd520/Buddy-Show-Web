@@ -159,7 +159,7 @@ export async function createOrder(request, env, customerId) {
     telegram(env, tgText(o, `🛒 Шинэ захиалга ${number} · ⏳ төлбөр хийгдээгүй`)),
   ];
   if (email) jobs.push(mail(env, email, `Таны захиалга ${number} хүлээн авлаа — Buddy Shop`,
-    orderHtml(o, `Сайн байна уу${name ? ', ' + esc(name) : ''}! Таны <b>${number}</b> дугаартай захиалгыг хүлээн авлаа. Манай ажилтан удахгүй утсаар холбогдож, төлбөр болон хүргэлтийг баталгаажуулна.`),
+    orderHtml(o, `Сайн байна уу${name ? ', ' + esc(name) : ''}! Таны <b>${number}</b> дугаартай захиалгыг хүлээн авлаа. Манай ажилтан удахгүй утсаар холбогдож, төлбөр болон хүргэлтийг баталгаажуулна.${o.delivery === 'pickup' ? '' : ' Хүргэлт маргааш өдөр хүргэгдэнэ.'}`),
     `Таны ${number} захиалгыг хүлээн авлаа. Нийт ${money(total)}. Манай ажилтан удахгүй холбогдоно.`));
   await Promise.allSettled(jobs);
   return [200, { ok: true, order: o }];
@@ -234,7 +234,7 @@ async function markPaid(env, row, amount) {
     mail(env, env.ORDER_NOTIFY || 'info@buddyshop.mn', `💳 Төлбөртэй захиалга ${o.number} — ${money(amount)} — ${o.name}`,
       orderHtml(o, `QPay-ээр төлбөр орлоо: <b>${o.number}</b> · ${money(amount)}${short ? ' (дутуу!)' : ''}`), `${o.number} төлөгдлөө ${money(amount)}`),
     o.email ? mail(env, o.email, `Төлбөр баталгаажлаа — ${o.number} — Buddy Shop`,
-      orderHtml(o, `Сайн байна уу${o.name ? ', ' + esc(o.name) : ''}! Таны <b>${o.number}</b> захиалгын <b>${money(amount)}</b> төлбөр амжилттай орлоо. ${o.delivery === 'pickup' ? 'Бараагаа дэлгүүрээс авах цагийг' : 'Хүргэлтийн цагийг'} манай ажилтан утсаар мэдэгдэнэ.`),
+      orderHtml(o, `Сайн байна уу${o.name ? ', ' + esc(o.name) : ''}! Таны <b>${o.number}</b> захиалгын <b>${money(amount)}</b> төлбөр амжилттай орлоо. ${o.delivery === 'pickup' ? 'Бараагаа дэлгүүрээс авах цагийг' : 'Хүргэлт маргааш өдөр хүргэгдэх бөгөөд хүргэлтийн цагийг'} манай ажилтан утсаар мэдэгдэнэ.`),
       `${o.number} төлбөр ${money(amount)} орлоо. Баярлалаа!`) : null,
   ]);
 }

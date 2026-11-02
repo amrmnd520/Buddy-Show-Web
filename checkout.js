@@ -30,6 +30,7 @@
 .co-ways label{margin:0;border:1px solid #cfd6da;border-radius:6px;padding:10px;cursor:pointer;font-weight:700;display:flex;gap:8px;align-items:center}
 .co-ways input{width:auto}.co-ways label:has(input:checked){border-color:var(--orange,#d77a35);background:#fff7f0}
 .co-hint{background:#f2f5f7;border-radius:6px;padding:10px 12px;font-size:13px;line-height:1.5;margin:10px 0}
+.co-ship{background:#eef7f1;border:1px solid #cfe6d7;color:#1f5f3a;border-radius:6px;padding:9px 12px;font-size:13px;font-weight:600;margin:8px 0 0}
 .co-hint button{background:none;border:0;padding:0;color:var(--blue,#203746);font:inherit;font-weight:700;text-decoration:underline;cursor:pointer}
 .co-err{background:#fdecea;color:#b42318;border-radius:5px;padding:8px 10px;font-size:13px;margin-top:10px}
 .co-ok{text-align:center;padding:10px 0}.co-ok .big{font-size:44px}.co-ok h3{margin:6px 0}.co-ok p{color:#5a6a72;line-height:1.5;font-size:14px}
@@ -101,6 +102,7 @@
         ${done.paid
           ? `<p><b>${fmt(done.paidAmount || done.total)}</b> төлөгдлөө. Баярлалаа! Манай ажилтан <b>${esc(done.phone)}</b> дугаарт ${done.delivery === 'pickup' ? 'бараагаа авах цагийг' : 'хүргэлтийн цагийг'} мэдэгдэнэ.</p>`
           : `<p>Нийт <b>${fmt(done.total)}</b>. Манай ажилтан удахгүй <b>${esc(done.phone)}</b> дугаарт холбогдож, төлбөр болон ${done.delivery === 'pickup' ? 'авах цагийг' : 'хүргэлтийг'} баталгаажуулна.</p>`}
+        ${done.delivery === 'pickup' ? '' : '<p class="co-ship">🚚 Таны захиалга маргааш өдөр хүргэгдэнэ.</p>'}
         ${done.qpayError ? `<div class="co-err">${esc(done.qpayError)}</div>` : ''}
         ${done.email ? `<p>Баталгаажуулах имэйл ${esc(done.email)} хаяг руу илгээгдлээ.</p>` : ''}
         ${a ? '<p>Захиалга тань «Миний бүртгэл → Захиалгууд» хэсэгт хадгалагдлаа.</p>' : ''}
@@ -133,6 +135,7 @@
         <div class="co-ways"><label><input type="radio" name="co-way" value="delivery" ${f.delivery !== 'pickup' ? 'checked' : ''}> 🚚 Хүргэлтээр</label>
           <label><input type="radio" name="co-way" value="pickup" ${f.delivery === 'pickup' ? 'checked' : ''}> 🏬 Дэлгүүрээс авах</label></div>
         <div id="co-addr" style="${f.delivery === 'pickup' ? 'display:none' : ''}">
+          <p class="co-ship">🚚 Хүргэлт захиалга өгсний маргааш өдөр хүргэгдэнэ.</p>
           ${saved ? `<div class="co-which">
             <label><input type="radio" name="co-which" value="saved" ${which === 'saved' ? 'checked' : ''}><span><b>📍 Бүртгэлтэй хаяг</b><small>${esc(a.address)}</small></span></label>
             <label><input type="radio" name="co-which" value="new" ${which === 'new' ? 'checked' : ''}><span><b>➕ Шинэ хаяг</b><small>Ажил, найзынх гэх мэт өөр хаяг руу хүргүүлэх</small></span></label></div>` : ''}

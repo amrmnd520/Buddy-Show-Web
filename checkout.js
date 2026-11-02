@@ -39,7 +39,8 @@
 .co-which label{margin:0;border:1px solid #cfd6da;border-radius:6px;padding:10px;cursor:pointer;display:flex;gap:10px;align-items:flex-start;font-weight:400}
 .co-which input{width:auto;margin-top:3px}.co-which span{display:flex;flex-direction:column;gap:2px}.co-which small{color:#5a6a72;font-size:13px;line-height:1.4}
 .co-which label:has(input:checked){border-color:var(--orange,#d77a35);background:#fff7f0}
-.co-pay{text-align:center}.co-pay h3{margin:0 0 4px}.co-pay .amt{font-size:18px}
+.co-pay{text-align:center;display:flex;flex-direction:column}
+@media(max-width:700px),(pointer:coarse){.co-pay .co-banks{order:-1;margin-top:4px}.co-pay h3{order:-3}.co-pay .co-sum:first-of-type{order:-2}.co-pay .co-qr{width:150px}.co-pay .phone-hint{display:block!important}.co-pay .desk-hint{display:none}}.co-pay h3{margin:0 0 4px}.co-pay .amt{font-size:18px}
 .co-qr{width:230px;max-width:80%;aspect-ratio:1;image-rendering:pixelated;border:1px solid #e3e7e9;border-radius:8px;padding:8px;background:#fff;margin:10px auto;display:block}
 .co-banks{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:10px 0;text-align:center}
 .co-banks a{display:flex;flex-direction:column;align-items:center;gap:4px;font-size:11px;color:inherit;text-decoration:none;border:1px solid #e3e7e9;border-radius:8px;padding:8px 4px;background:#fff}
@@ -83,7 +84,8 @@
       area.innerHTML = `<div class="co-pay"><h3>QPay-ээр төлөх</h3>
         <p class="co-sum">Захиалга <b>${esc(o.number)}</b> · Төлөх дүн <b class="amt">${fmt(o.total)}</b></p>
         ${q.qr ? `<img class="co-qr" src="${esc(q.qr)}" alt="QPay QR код">` : ''}
-        <p class="co-sum">Банкны апп-аараа QR кодыг уншуулна уу.${q.banks.length ? ' Утсаараа бол доорх банкаа сонгоно уу:' : ''}</p>
+        <p class="co-sum desk-hint">Банкны апп-аараа QR кодыг уншуулна уу.${q.banks.length ? ' Утсаараа бол доорх банкаа сонгоно уу:' : ''}</p>
+        <p class="co-sum phone-hint" style="display:none;order:-2">👇 Банкаа сонгоход апп нь нээгдэж төлбөр бэлэн бөглөгдсөн байна. Өөр утсаар уншуулах бол доорх QR-ийг ашиглана.</p>
         ${q.banks.length ? `<div class="co-banks">${q.banks.map(b => `<a href="${esc(b.link)}" rel="noopener">${b.logo ? `<img src="${esc(b.logo)}" alt="" loading="lazy">` : ''}<span>${esc(b.name)}</span></a>`).join('')}</div>` : ''}
         ${q.link ? `<p class="co-sum"><a href="${esc(q.link)}" target="_blank" rel="noopener">QPay холбоосоор нээх ↗</a></p>` : ''}
         <div class="co-wait"><span class="dot"></span> Төлбөр хүлээж байна… төлсний дараа энэ хэсэг автоматаар шинэчлэгдэнэ.</div>

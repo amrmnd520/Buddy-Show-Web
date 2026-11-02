@@ -9,7 +9,7 @@
     ['brands', '.brands', 'Брэндүүд']
   ];
   const DEFAULTS = {
-    announcement: { show: true, text: 'BUDDY SHOP · PREMIUM FISHING & OUTDOOR · QPAY-ЭЭР ШУУД ТӨЛНӨ' },
+    announcement: { show: true, text: 'BUDDY SHOP · QPAY-ЭЭР ШУУД ТӨЛНӨ' },
     logo: { image: '', height: 48, text: '▲ BUDDY SHOP', subtitle: 'FISHING & OUTDOOR', showText: true },
     hero: { image: '', title: 'ЗАГАСЧЛАЛ БОЛ ЗӨВХӨН ХОББИ БИШ.\nАМЬДРАЛЫН ХЭВ МАЯГ.', titleSize: 14, button: 'БҮТЭЭГДЭХҮҮН ҮЗЭХ ↗', showButton: true, height: 420, darkness: 65, align: 'left', position: 55 },
     menu: { showCategories: true, items: [] },

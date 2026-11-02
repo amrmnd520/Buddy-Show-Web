@@ -48,6 +48,8 @@
 .co-wait{display:flex;gap:8px;align-items:center;justify-content:center;font-size:13px;color:#5a6a72;margin:10px 0}
 .co-wait .dot{width:10px;height:10px;border-radius:50%;background:#d77a35;animation:coPulse 1s infinite alternate}@keyframes coPulse{from{opacity:.3}to{opacity:1}}
 @media(min-width:900px){.co-banks{grid-template-columns:repeat(5,1fr)}}
+.co-toast{position:sticky;bottom:12px;margin:0 16px;display:flex;gap:12px;align-items:center;justify-content:space-between;background:#10202c;color:#fff;border-radius:10px;padding:12px 14px;font-size:14px;box-shadow:0 8px 24px rgba(0,0,0,.25);opacity:0;transform:translateY(12px);pointer-events:none;transition:.25s;z-index:5}
+.co-toast.show{opacity:1;transform:none;pointer-events:auto}.co-toast button{background:var(--orange,#d77a35);color:#fff;border:0;border-radius:6px;padding:8px 12px;font-weight:800;cursor:pointer;white-space:nowrap}
 .co-check{display:flex!important;gap:8px;align-items:center;font-weight:400!important}.co-check input{width:auto}`;
   document.head.appendChild(st);
 
@@ -247,6 +249,7 @@
     window.showCart = function (...a) { const out = prev.apply(this, a); if (view === 'done') view = 'cart', done = null; if (view === 'pay' && cart.length) { view = 'cart'; } try { paint(); } catch (e) {} return out; };
   }
   // «Сагсанд нэмэх» on the product page: go straight to the cart (the product window closes).
+  // Products with colour options stay open (several colours are often added) and show «Сагс руу очих».
   if (typeof window.addDetailProduct === 'function') {
     const prevAdd = window.addDetailProduct;
     window.addDetailProduct = function (...a) {
@@ -254,8 +257,24 @@
       const out = prevAdd.apply(this, a);
       try {
         if (typeof cart !== 'undefined' && cart.length > before && typeof showCart === 'function') {
-          const dlg = document.getElementById('product-detail'); // a modal dialog sits above everything: close it first
-          setTimeout(() => { if (dlg && dlg.open) dlg.close(); view = 'cart'; done = null; showCart(); }, 250);
+          const dlg = document.getElementById('product-detail'); // a modal dialog sits above everything
+          const item = cart[cart.length - 1];
+          const p = (typeof products !== 'undefined' ? products : []).find(x => Number(x.id) === Number(item.id));
+          const colours = !!(item.colorCode || (p && Array.isArray(p.colorOptions) && p.colorOptions.length));
+          const goCart = () => { if (dlg && dlg.open) dlg.close(); view = 'cart'; done = null; showCart(); };
+          if (!colours) setTimeout(goCart, 250);
+          else {
+            // colour products: customers often add several colours — stay, and offer the cart
+            let toast = dlg && dlg.querySelector('.co-toast');
+            if (dlg && !toast) { toast = document.createElement('div'); toast.className = 'co-toast'; dlg.appendChild(toast); }
+            if (toast) {
+              const n = cart.filter(x => Number(x.id) === Number(item.id)).length;
+              toast.innerHTML = `<span>✓ Сагсанд нэмэгдлээ${item.colorCode ? ` · өнгө ${esc(item.colorCode)}` : ''}${n > 1 ? ` (энэ бараанаас ${n})` : ''}</span><button type="button">Сагс руу очих →</button>`;
+              toast.querySelector('button').onclick = goCart;
+              toast.classList.remove('show'); void toast.offsetWidth; toast.classList.add('show');
+              clearTimeout(toast._t); toast._t = setTimeout(() => toast.classList.remove('show'), 6000);
+            }
+          }
         }
       } catch (e) {}
       return out;

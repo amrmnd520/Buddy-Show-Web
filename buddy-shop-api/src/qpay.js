@@ -11,7 +11,7 @@ export const enabled = (env) => !!(env.QPAY_USERNAME && env.QPAY_PASSWORD && env
 async function token(env) {
   if (tok && Date.now() < tok.until) return tok.token;
   const res = await fetch(base(env) + '/auth/token', {
-    method: 'POST', headers: { authorization: 'Basic ' + btoa(`${env.QPAY_USERNAME}:${env.QPAY_PASSWORD}`) },
+    method: 'POST', headers: { authorization: 'Basic ' + btoa(`${String(env.QPAY_USERNAME).trim()}:${String(env.QPAY_PASSWORD).trim()}`) },
   });
   const d = await res.json().catch(() => ({}));
   if (!res.ok || !d.access_token) throw new Error('QPay нэвтрэлт амжилтгүй (' + (d.message || d.error || res.status) + ')');
@@ -34,7 +34,7 @@ async function call(env, path, body, method = 'POST') {
 
 export function createInvoice(env, { number, amount, phone, callback }) {
   return call(env, '/invoice', {
-    invoice_code: env.QPAY_INVOICE_CODE,
+    invoice_code: String(env.QPAY_INVOICE_CODE).trim(),
     sender_invoice_no: number,
     invoice_receiver_code: String(phone || 'terminal').replace(/\D/g, '') || 'terminal',
     invoice_description: `Buddy Shop ${number}`,

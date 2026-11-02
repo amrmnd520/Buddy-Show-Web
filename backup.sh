@@ -44,9 +44,9 @@ import json, re, sys
 s = open(sys.argv[1]).read()
 print("\n".join(sorted(set(re.findall(r'https://buddy-shop-api\.taimenlodge\.workers\.dev/img/[^"\\]+', s)))))
 PY
-if [ -s "$OUT/r2/uploaded-photo-urls.txt" ]; then
+if grep -q "http" "$OUT/r2/uploaded-photo-urls.txt" 2>/dev/null; then
   mkdir -p "$OUT/r2/uploaded-photos"
-  while read -r U; do curl -s -o "$OUT/r2/uploaded-photos/$(basename "$U")" "$U"; done < "$OUT/r2/uploaded-photo-urls.txt"
+  while read -r U; do [ -n "$U" ] && curl -s -o "$OUT/r2/uploaded-photos/$(basename "$U")" "$U" || true; done < "$OUT/r2/uploaded-photo-urls.txt"
 fi
 
 echo "5/5 Names of secrets in use…"

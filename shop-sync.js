@@ -177,6 +177,20 @@
   const gate = document.createElement('style');
   gate.textContent = 'body:not(.staff-signed-in) #site-settings,body:not(.staff-signed-in) #featured-admin,body:not(.staff-signed-in) #soldout-admin,body:not(.staff-signed-in) #erp-suggest-admin,body:not(.staff-signed-in) #stats-admin,body:not(.staff-signed-in) #customers-admin,body:not(.staff-signed-in) #orders-admin{display:none!important}';
   document.head.appendChild(gate);
+  // The admin area is for staff only: hidden for customers, opened by buddyshop.mn/#admin
+  // (or the small «Ажилтан» link in the footer) to sign in. Admin buttons appear once signed in.
+  const gate2 = document.createElement('style');
+  gate2.textContent = 'body:not(.staff-signed-in):not(.admin-open) #admin{display:none!important}' +
+    'body:not(.staff-signed-in) .header button[onclick^="adminRender"],body:not(.staff-signed-in) .mobilebar button[onclick^="adminRender"]{display:none!important}' +
+    'body:not(.staff-signed-in) .mobilebar{grid-template-columns:repeat(3,1fr)!important}' +
+    'body:not(.staff-signed-in) [onclick="setDetailCover()"],body:not(.staff-signed-in) #cover-status{display:none!important}';
+  document.head.appendChild(gate2);
+  const openAdmin = () => {
+    if (location.hash !== '#admin') return;
+    document.body.classList.add('admin-open');
+    setTimeout(() => { try { adminRender(); } catch (e) {} document.getElementById('admin')?.scrollIntoView(); }, 300);
+  };
+  addEventListener('hashchange', openAdmin); openAdmin();
   const panel = document.querySelector('#admin .admin-panel');
   const bar = document.createElement('div');
   bar.className = 'shop-sync-bar';

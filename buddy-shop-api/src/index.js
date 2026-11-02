@@ -163,7 +163,7 @@ export default {
 
       // ---- QPay ----
       if (path === '/api/qpay/callback') return qpayCallback(env, url);
-      if (path === '/api/qpay/status') return json({ enabled: qpay.enabled(env) }, 200, { 'cache-control': 'public, max-age=300' });
+      if (path === '/api/qpay/status') return json({ enabled: qpay.enabled(env) }, 200, { 'cache-control': 'no-store' });
       const pm = path.match(/^\/api\/orders\/(\d+)\/pay$/);
       if (pm && request.method === 'GET') {
         const r = await payStatus(env, Number(pm[1]), url.searchParams.get('k'), url.searchParams.get('check') === '1');

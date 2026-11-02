@@ -12,7 +12,10 @@
   const acc = () => window.BuddyAccount;
   let view = 'cart', busy = false, err = '', done = null, form = null; // form: last typed values
   let payOn = false, paying = null, pollTimer = null; // paying: { order, key, q, checking, msg }
-  fetch(API + '/api/qpay/status').then(r => r.json()).then(d => { payOn = !!d.enabled; if (view !== 'pay') paint(); }).catch(() => {});
+  const checkPay = () => fetch(API + '/api/qpay/status', { cache: 'no-store' }).then(r => r.json()).then(d => {
+    const was = payOn; payOn = !!d.enabled; if (was !== payOn && view !== 'pay') paint();
+  }).catch(() => {});
+  checkPay();
 
   const st = document.createElement('style');
   st.textContent = `
@@ -165,7 +168,7 @@
   area.addEventListener('click', e => {
     const b = e.target.closest('[data-co]'); if (!b) return;
     const a = b.dataset.co;
-    if (a === 'checkout') { view = 'form'; err = ''; paint(); area.querySelector('#co-name')?.focus(); }
+    if (a === 'checkout') { view = 'form'; err = ''; paint(); area.querySelector('#co-name')?.focus(); checkPay(); }
     else if (a === 'back') { form = read(); view = 'cart'; paint(); }
     else if (a === 'login') { form = read(); acc() && acc().open('Нэвтэрсний дараа сагс руугаа буцаж захиалгаа үргэлжлүүлнэ үү.'); }
     else if (a === 'close') { view = 'cart'; done = null; typeof hideCart === 'function' && hideCart(); }

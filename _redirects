@@ -1,16 +1,19 @@
-# Old Zochil shop links (Google still shows them) → the same product on the new site
+# Old Zochil shop links (Google still shows them) → the same product on the new site.
+# Keep patterns exact or ending in /* — a bare "*" would also catch our own files (account.js, checkout.js).
 /products/:shop/:id   /?p=:id   301
 /products/:id         /?p=:id   301
 /products             /         301
-/products/*           /         301
 /categories/*         /#catalog 301
 /category/*           /#catalog 301
 /collections/*        /#catalog 301
 /brands/*             /#catalog 301
 /pages/*              /         301
-/search*              /         301
+/search               /         301
+/search/*             /         301
 /cart                 /         301
-/checkout*            /         301
+/checkout             /         301
+/checkout/*           /         301
 /login                /         301
 /register             /         301
-/account*             /         301
+/account              /         301
+/account/*            /         301

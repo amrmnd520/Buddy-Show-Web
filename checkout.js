@@ -102,6 +102,8 @@
         ${done.paid
           ? `<p><b>${fmt(done.paidAmount || done.total)}</b> төлөгдлөө. Баярлалаа! Манай ажилтан <b>${esc(done.phone)}</b> дугаарт ${done.delivery === 'pickup' ? 'бараагаа авах цагийг' : 'хүргэлтийн цагийг'} мэдэгдэнэ.</p>`
           : `<p>Нийт <b>${fmt(done.total)}</b>. Манай ажилтан удахгүй <b>${esc(done.phone)}</b> дугаарт холбогдож, төлбөр болон ${done.delivery === 'pickup' ? 'авах цагийг' : 'хүргэлтийг'} баталгаажуулна.</p>`}
+        ${done.payMethod === 'storepay' || done.payMethod === 'pocket'
+          ? `<p class="co-ship">${done.payMethod === 'storepay' ? '🟣 Storepay' : '🔵 Pocket'}-ээр хуваан төлнө — аппдаа ирэх хүсэлтийг зөвшөөрөхөд төлбөр баталгаажна.</p>` : ''}
         ${done.delivery === 'pickup' ? '' : '<p class="co-ship">🚚 Таны захиалга маргааш өдөр хүргэгдэнэ.</p>'}
         ${done.qpayError ? `<div class="co-err">${esc(done.qpayError)}</div>` : ''}
         ${done.email ? `<p>Баталгаажуулах имэйл ${esc(done.email)} хаяг руу илгээгдлээ.</p>` : ''}
@@ -112,7 +114,7 @@
     if (!l.length) { area.innerHTML = ''; view = 'cart'; return; }
     if (view === 'cart') {
       area.innerHTML = `<button class="co-go" data-co="checkout">Захиалга өгөх →</button>
-        <p class="co-sum">${payOn ? 'QPay-ээр шууд төлөх, эсвэл ажилтантай тохирч дараа төлөх боломжтой.' : 'Төлбөрийг захиалга баталгаажсаны дараа ажилтан мэдэгдэнэ.'}</p>`;
+        <p class="co-sum">${payOn ? 'QPay-ээр шууд төлөх, Storepay / Pocket-ээр хуваан төлөх, эсвэл ажилтантай тохирч дараа төлөх боломжтой.' : 'Төлбөрийг захиалга баталгаажсаны дараа ажилтан мэдэгдэнэ.'}</p>`;
       return;
     }
     // checkout form
@@ -143,10 +145,12 @@
             ${a ? `<label class="co-check"><input type="checkbox" id="co-save" ${(saved ? f.save : true) ? 'checked' : ''}> ${saved ? 'Энэ хаягийг үндсэн хаягаа болгож хадгалах' : 'Энэ хаягийг бүртгэлдээ хадгалах'}</label>` : ''}</div></div>
         <label for="co-note">Захиалгын тайлбар</label><textarea id="co-note" maxlength="500" placeholder="Хүргэлтийн цаг, бусад хүсэлт">${esc(f.note)}</textarea>
         ${payOn ? `<div class="co-sec">Төлбөр</div>
-        <div class="co-which"><label><input type="radio" name="co-pay" value="qpay" ${f.pay !== 'later' ? 'checked' : ''}><span><b>💳 QPay-ээр одоо төлөх</b><small>QR код эсвэл банкны апп-аар шууд</small></span></label>
+        <div class="co-which"><label><input type="radio" name="co-pay" value="qpay" ${f.pay === 'qpay' ? 'checked' : ''}><span><b>💳 QPay-ээр одоо төлөх</b><small>QR код эсвэл банкны апп-аар шууд</small></span></label>
+          <label><input type="radio" name="co-pay" value="storepay" ${f.pay === 'storepay' ? 'checked' : ''}><span><b>🟣 Storepay-ээр хуваан төлөх</b><small>Storepay апп-аараа төлнө — ажилтан холбогдож баталгаажуулна</small></span></label>
+          <label><input type="radio" name="co-pay" value="pocket" ${f.pay === 'pocket' ? 'checked' : ''}><span><b>🔵 Pocket-ээр хуваан төлөх</b><small>Pocket апп-аараа төлнө — ажилтан холбогдож баталгаажуулна</small></span></label>
           <label><input type="radio" name="co-pay" value="later" ${f.pay === 'later' ? 'checked' : ''}><span><b>🤝 Дараа төлөх</b><small>Ажилтан холбогдож төлбөрийг тохирно</small></span></label></div>` : ''}
         ${err ? `<div class="co-err">${esc(err)}</div>` : ''}
-        <button class="co-go" ${busy ? 'disabled' : ''}>${busy ? 'Илгээж байна…' : payOn && f.pay !== 'later' ? `Захиалаад QPay-ээр төлөх · ${fmt(total(l))}` : `Захиалга илгээх · ${fmt(total(l))}`}</button>
+        <button class="co-go" ${busy ? 'disabled' : ''}>${busy ? 'Илгээж байна…' : payOn && f.pay === 'qpay' ? `Захиалаад QPay-ээр төлөх · ${fmt(total(l))}` : `Захиалга илгээх · ${fmt(total(l))}`}</button>
         ${payOn ? '' : '<p class="co-sum">Төлбөр: манай ажилтан захиалгыг баталгаажуулаад дансны мэдээлэл өгнө.</p>'}
       </form>`;
   }
@@ -397,7 +401,7 @@
       ${loadErr ? `<div class="co-err">${esc(loadErr)}</div>` : ''}
       ${!data ? '' : !list.length ? '<p class="note">Захиалга алга.</p>' : list.slice(page * PER, page * PER + PER).map(o => `<div class="ord-row">
         <div class="ord-head" data-o="${o.id}"><b>${esc(o.number)}</b><span>${dtm(o.createdAt)}</span><span>${esc(o.name)} · ${esc(o.phone)}</span>
-          <span>${o.delivery === 'pickup' ? '🏬 Очиж авна' : '🚚 Хүргэлт'}</span><span class="n">${fmt(o.total)}${o.paid ? ' <span title="QPay-ээр төлсөн">💳</span>' : o.payMethod === 'qpay' ? ' <span title="QPay төлбөр хүлээгдэж байна">⏳</span>' : ''}</span><span class="ord-st ${esc(o.status)}">${esc(o.statusText)}</span></div>
+          <span>${o.delivery === 'pickup' ? '🏬 Очиж авна' : '🚚 Хүргэлт'}</span><span class="n">${fmt(o.total)}${o.paid ? ' <span title="Төлбөр төлөгдсөн">💳</span>' : o.payMethod === 'qpay' ? ' <span title="QPay төлбөр хүлээгдэж байна">⏳</span>' : o.payMethod === 'storepay' ? ' <span title="Storepay-ээр төлнө">🟣</span>' : o.payMethod === 'pocket' ? ' <span title="Pocket-ээр төлнө">🔵</span>' : ''}</span><span class="ord-st ${esc(o.status)}">${esc(o.statusText)}</span></div>
         ${openId === o.id ? `<div class="ord-body"><div><table>${o.items.map(i => `<tr><td><img src="${esc(i.image)}" alt="" loading="lazy"></td>
             <td><b>${esc(i.name)}</b>${i.size ? `<br>Хэмжээ: ${esc(i.size)}` : ''}${i.colorCode ? `<br>Өнгө: ${esc(i.colorCode)}` : ''}<br><small>${esc(i.brand)}${i.code ? ' · код ' + esc(i.code) : ''}</small></td>
             <td style="text-align:right;white-space:nowrap">${fmt(i.price)} × ${i.qty}<br><b>${fmt(i.price * i.qty)}</b></td></tr>`).join('')}
@@ -405,7 +409,10 @@
           <div><p><b>${esc(o.name)}</b><br>📞 <a href="tel:${esc(o.phone)}">${esc(o.phone)}</a>${o.email ? `<br>✉️ <a href="mailto:${esc(o.email)}">${esc(o.email)}</a>` : ''}${o.customerId ? '<br><small>Бүртгэлтэй хэрэглэгч</small>' : '<br><small>Зочин</small>'}</p>
             <p>${o.delivery === 'pickup' ? '🏬 Дэлгүүрээс очиж авна' : '🚚 ' + esc(o.address)}</p>${o.note ? `<p>📝 ${esc(o.note)}</p>` : ''}
             <p class="ord-pay ${o.paid ? 'ok' : ''}">${o.paid ? `💳 QPay-ээр төлсөн: <b>${fmt(o.paidAmount)}</b> · ${dtm(o.paidAt)}${o.paidAmount < o.total ? ' — ⚠ дутуу' : ''}`
-              : o.payMethod === 'qpay' ? `⏳ QPay төлбөр хүлээгдэж байна <button type="button" data-qc="${o.id}">QPay шалгах</button>` : '🤝 Дараа төлөх — ажилтан төлбөрийг тохирно'}</p>
+              : o.payMethod === 'qpay' ? `⏳ QPay төлбөр хүлээгдэж байна <button type="button" data-qc="${o.id}">QPay шалгах</button>`
+              : o.payMethod === 'storepay' ? '🟣 <b>Storepay</b>-ээр төлнө — Storepay Merchant апп дээр баталгаажуулаад төлвийг «Төлсөн» болго'
+              : o.payMethod === 'pocket' ? '🔵 <b>Pocket</b>-ээр төлнө — Pocket Merchant апп дээр баталгаажуулаад төлвийг «Төлсөн» болго'
+              : '🤝 Дараа төлөх — ажилтан төлбөрийг тохирно'}</p>
             ${o.priceCheck && o.priceCheck !== 'ok' ? `<p class="ord-warn">⚠ ${esc(o.priceCheck)}</p>` : ''}
             <label style="font-weight:700;font-size:13px">Төлөв</label><select data-st="${o.id}" style="width:100%;padding:8px;margin:4px 0 10px">${Object.keys(S).map(k => `<option value="${k}" ${k === o.status ? 'selected' : ''}>${esc(S[k])}</option>`).join('')}</select>
             <label style="font-weight:700;font-size:13px">Ажилтны тэмдэглэл</label><textarea data-sn="${o.id}" placeholder="Зөвхөн ажилтнуудад харагдана">${esc(o.staffNote)}</textarea>

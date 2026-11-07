@@ -38,6 +38,13 @@ const parse = (s, d) => { try { return JSON.parse(s) ?? d; } catch { return d; }
 const money = (n) => Number(n || 0).toLocaleString('en-US') + '₮';
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
+// Loan apps: the customer pays inside their own Storepay / Pocket app and staff approve it in the
+// merchant app. The site never talks to Storepay or Pocket — it only records which app was chosen
+// so staff know where to confirm the money before the order ships.
+// Null-prototype: a lookup must not succeed for 'constructor', '__proto__' and friends, or the
+// browser could get any string stored as the order's payment method.
+const PAY_APPS = Object.assign(Object.create(null), { storepay: 'Storepay', pocket: 'Pocket' });
+
 export function orderView(o) {
   return {
     id: o.id, number: o.number || `BS${1000 + o.id}`, createdAt: o.created_at, updatedAt: o.updated_at || null,
@@ -122,16 +129,17 @@ export async function createOrder(request, env, customerId) {
   const total = items.reduce((s, i) => s + i.price * i.qty, 0);
   const now = new Date().toISOString();
   const payQ = b.pay === 'qpay' && qpay.enabled(env) && total > 0;
+  const payApp = !payQ && total > 0 && PAY_APPS[b.pay] ? b.pay : null;
   const payKey = crypto.randomUUID().replace(/-/g, '');
 
   const r = await env.DB.prepare(`INSERT INTO orders (customer_id, created_at, updated_at, status, total, items, note, name, phone, email, address, addr, delivery, pay_method, pay_key, price_check)
     VALUES (?1, ?2, ?2, 'new', ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)`)
     .bind(customerId || 0, now, total, JSON.stringify(items), note, name, phone, email, address,
-      b.addr && typeof b.addr === 'object' ? JSON.stringify(b.addr).slice(0, 1000) : null, delivery, payQ ? 'qpay' : 'later', payKey, priceCheck).run();
+      b.addr && typeof b.addr === 'object' ? JSON.stringify(b.addr).slice(0, 1000) : null, delivery, payQ ? 'qpay' : payApp || 'later', payKey, priceCheck).run();
   const id = r.meta.last_row_id, number = `BS${1000 + id}`;
   await env.DB.prepare('UPDATE orders SET number = ?1 WHERE id = ?2').bind(number, id).run();
   const row = { id, number, created_at: now, status: 'new', total, items: JSON.stringify(items), name, phone, email, address, delivery, note,
-    customer_id: customerId, pay_method: payQ ? 'qpay' : 'later', price_check: priceCheck };
+    customer_id: customerId, pay_method: payQ ? 'qpay' : payApp || 'later', price_check: priceCheck };
   const o = orderView(row);
 
   if (payQ) {
@@ -155,8 +163,8 @@ export async function createOrder(request, env, customerId) {
   // notifications should never block the order itself
   const jobs = [
     mail(env, env.ORDER_NOTIFY || 'info@buddyshop.mn', `🛒 Шинэ захиалга ${number} — ${money(total)} — ${name}`,
-      orderHtml(o, `Сайтаас шинэ захиалга ирлээ: <b>${number}</b>`), `${number}\n${items.map(itemLine).join('\n')}\nНийт ${money(total)}\n${name} ${phone}\n${address}`),
-    telegram(env, tgText(o, `🛒 Шинэ захиалга ${number} · ⏳ төлбөр хийгдээгүй`)),
+      orderHtml(o, `Сайтаас шинэ захиалга ирлээ: <b>${number}</b>${payApp ? ` · Төлбөр: <b>${PAY_APPS[payApp]}</b> — merchant апп дээр баталгаажуулна` : ''}`), `${number}\n${items.map(itemLine).join('\n')}\nНийт ${money(total)}\n${name} ${phone}\n${address}`),
+    telegram(env, tgText(o, `🛒 Шинэ захиалга ${number} · ${payApp ? `${PAY_APPS[payApp]}-ээр төлнө — merchant апп дээр баталгаажуулна` : '⏳ төлбөр хийгдээгүй'}`)),
   ];
   if (email) jobs.push(mail(env, email, `Таны захиалга ${number} хүлээн авлаа — Buddy Shop`,
     orderHtml(o, `Сайн байна уу${name ? ', ' + esc(name) : ''}! Таны <b>${number}</b> дугаартай захиалгыг хүлээн авлаа. Манай ажилтан удахгүй утсаар холбогдож, төлбөр болон хүргэлтийг баталгаажуулна.${o.delivery === 'pickup' ? '' : ' Хүргэлт маргааш өдөр хүргэгдэнэ.'}`),

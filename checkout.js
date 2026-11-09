@@ -120,7 +120,6 @@
           ? `<p><b>${fmt(done.paidAmount || done.total)}</b> ${done.payMethod === 'storepay' ? 'Storepay-ээр баталгаажлаа' : 'төлөгдлөө'}. Баярлалаа! Манай ажилтан <b>${esc(done.phone)}</b> дугаарт ${done.delivery === 'pickup' ? 'бараагаа авах цагийг' : 'хүргэлтийн цагийг'} мэдэгдэнэ.</p>`
           : BNPL[done.payMethod] ? `<p>Нийт <b>${fmt(done.total)}</b>. Та <b>${BNPL[done.payMethod].name}</b>-ээр хуваан төлөхийг сонгосон. Манай ажилтан удахгүй <b>${esc(done.phone)}</b> дугаар руу ${BNPL[done.payMethod].name} нэхэмжлэх илгээнэ — ${BNPL[done.payMethod].name} апп дээрээ баталгаажуулна уу.</p>`
           : `<p>Нийт <b>${fmt(done.total)}</b>. Манай ажилтан удахгүй <b>${esc(done.phone)}</b> дугаарт холбогдож, төлбөр болон ${done.delivery === 'pickup' ? 'авах цагийг' : 'хүргэлтийг'} баталгаажуулна.</p>`}
-        ${done.delivery === 'pickup' ? '' : '<p class="co-ship">🚚 Таны захиалга маргааш өдөр хүргэгдэнэ.</p>'}
         ${done.qpayError ? `<div class="co-err">${esc(done.qpayError)}</div>` : ''}
         ${done.storepayError ? `<div class="co-err">${esc(done.storepayError)}</div>` : ''}
         ${done.email ? `<p>Баталгаажуулах имэйл ${esc(done.email)} хаяг руу илгээгдлээ.</p>` : ''}
@@ -155,7 +154,6 @@
         <div class="co-ways"><label><input type="radio" name="co-way" value="delivery" ${f.delivery !== 'pickup' ? 'checked' : ''}> 🚚 Хүргэлтээр</label>
           <label><input type="radio" name="co-way" value="pickup" ${f.delivery === 'pickup' ? 'checked' : ''}> 🏬 Дэлгүүрээс авах</label></div>
         <div id="co-addr" style="${f.delivery === 'pickup' ? 'display:none' : ''}">
-          <p class="co-ship">🚚 Хүргэлт захиалга өгсний маргааш өдөр хүргэгдэнэ.</p>
           ${saved ? `<div class="co-which">
             <label><input type="radio" name="co-which" value="saved" ${which === 'saved' ? 'checked' : ''}><span><b>📍 Бүртгэлтэй хаяг</b><small>${esc(a.address)}</small></span></label>
             <label><input type="radio" name="co-which" value="new" ${which === 'new' ? 'checked' : ''}><span><b>➕ Шинэ хаяг</b><small>Ажил, найзынх гэх мэт өөр хаяг руу хүргүүлэх</small></span></label></div>` : ''}

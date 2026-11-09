@@ -11,6 +11,8 @@
   const priceOf = item => Number(item.price) || (findP(item.id)?.price || 0);
   const acc = () => window.BuddyAccount;
   let view = 'cart', busy = false, err = '', done = null, form = null; // form: last typed values
+  const BNPL = { storepay: { name: 'Storepay', icon: '🟣' }, pocket: { name: 'Pocket', icon: '🟢' } };
+  const goLabel = (m, sum) => m === 'qpay' && payOn ? `Захиалаад QPay-ээр төлөх · ${sum}` : BNPL[m] ? `${BNPL[m].name}-ээр захиалах · ${sum}` : `Захиалга илгээх · ${sum}`;
   let payOn = false, paying = null, pollTimer = null; // paying: { order, key, q, checking, msg }
   const checkPay = () => fetch(API + '/api/qpay/status', { cache: 'no-store' }).then(r => r.json()).then(d => {
     const was = payOn; payOn = !!d.enabled; if (was !== payOn && view !== 'pay') paint();
@@ -101,6 +103,7 @@
       area.innerHTML = `<div class="co-ok"><div class="big">✅</div><h3>${done.paid ? `Төлбөр амжилттай — ${esc(done.number)}` : `Захиалга ${esc(done.number)} хүлээн авлаа`}</h3>
         ${done.paid
           ? `<p><b>${fmt(done.paidAmount || done.total)}</b> төлөгдлөө. Баярлалаа! Манай ажилтан <b>${esc(done.phone)}</b> дугаарт ${done.delivery === 'pickup' ? 'бараагаа авах цагийг' : 'хүргэлтийн цагийг'} мэдэгдэнэ.</p>`
+          : BNPL[done.payMethod] ? `<p>Нийт <b>${fmt(done.total)}</b>. Та <b>${BNPL[done.payMethod].name}</b>-ээр хуваан төлөхийг сонгосон. Манай ажилтан удахгүй <b>${esc(done.phone)}</b> дугаар руу ${BNPL[done.payMethod].name} нэхэмжлэх илгээнэ — ${BNPL[done.payMethod].name} апп дээрээ баталгаажуулна уу.</p>`
           : `<p>Нийт <b>${fmt(done.total)}</b>. Манай ажилтан удахгүй <b>${esc(done.phone)}</b> дугаарт холбогдож, төлбөр болон ${done.delivery === 'pickup' ? 'авах цагийг' : 'хүргэлтийг'} баталгаажуулна.</p>`}
         ${done.delivery === 'pickup' ? '' : '<p class="co-ship">🚚 Таны захиалга маргааш өдөр хүргэгдэнэ.</p>'}
         ${done.qpayError ? `<div class="co-err">${esc(done.qpayError)}</div>` : ''}
@@ -112,13 +115,14 @@
     if (!l.length) { area.innerHTML = ''; view = 'cart'; return; }
     if (view === 'cart') {
       area.innerHTML = `<button class="co-go" data-co="checkout">Захиалга өгөх →</button>
-        <p class="co-sum">${payOn ? 'QPay-ээр шууд төлөх, эсвэл ажилтантай тохирч дараа төлөх боломжтой.' : 'Төлбөрийг захиалга баталгаажсаны дараа ажилтан мэдэгдэнэ.'}</p>`;
+        <p class="co-sum">${payOn ? 'QPay-ээр шууд, Storepay эсвэл Pocket-оор хуваан төлөх боломжтой.' : 'Storepay, Pocket-оор хуваан төлөх эсвэл ажилтантай тохирч төлөх боломжтой.'}</p>`;
       return;
     }
     // checkout form
     const f = form || {
       name: a ? a.name : '', phone: a ? a.phone : '', email: a ? a.email : '', delivery: 'delivery', note: '', save: false, pay: 'qpay',
     };
+    const pm = f.pay === 'qpay' && !payOn ? 'later' : (f.pay || 'later');
     const saved = savedAddr(a);
     const which = saved ? ((form && form.which) || 'saved') : 'new';
     const newSrc = { addr: form && form.which === 'new' && form.addr ? form.addr : (saved ? {} : ((a && a.addr) || {})) };
@@ -142,12 +146,13 @@
           <div id="co-new" style="${which === 'saved' ? 'display:none' : ''}">${acc() ? acc().addrFields(newSrc) : ''}
             ${a ? `<label class="co-check"><input type="checkbox" id="co-save" ${(saved ? f.save : true) ? 'checked' : ''}> ${saved ? 'Энэ хаягийг үндсэн хаягаа болгож хадгалах' : 'Энэ хаягийг бүртгэлдээ хадгалах'}</label>` : ''}</div></div>
         <label for="co-note">Захиалгын тайлбар</label><textarea id="co-note" maxlength="500" placeholder="Хүргэлтийн цаг, бусад хүсэлт">${esc(f.note)}</textarea>
-        ${payOn ? `<div class="co-sec">Төлбөр</div>
-        <div class="co-which"><label><input type="radio" name="co-pay" value="qpay" ${f.pay !== 'later' ? 'checked' : ''}><span><b>💳 QPay-ээр одоо төлөх</b><small>QR код эсвэл банкны апп-аар шууд</small></span></label>
-          <label><input type="radio" name="co-pay" value="later" ${f.pay === 'later' ? 'checked' : ''}><span><b>🤝 Дараа төлөх</b><small>Ажилтан холбогдож төлбөрийг тохирно</small></span></label></div>` : ''}
+        <div class="co-sec">Төлбөр</div>
+        <div class="co-which">${payOn ? `<label><input type="radio" name="co-pay" value="qpay" ${pm === 'qpay' ? 'checked' : ''}><span><b>💳 QPay-ээр одоо төлөх</b><small>QR код эсвэл банкны апп-аар шууд</small></span></label>` : ''}
+          <label><input type="radio" name="co-pay" value="storepay" ${pm === 'storepay' ? 'checked' : ''}><span><b>🟣 Storepay — хуваан төлөх</b><small>Ажилтан таны утас руу Storepay нэхэмжлэх илгээнэ</small></span></label>
+          <label><input type="radio" name="co-pay" value="pocket" ${pm === 'pocket' ? 'checked' : ''}><span><b>🟢 Pocket — хуваан төлөх</b><small>Ажилтан таны утас руу Pocket нэхэмжлэх илгээнэ</small></span></label>
+          <label><input type="radio" name="co-pay" value="later" ${pm === 'later' ? 'checked' : ''}><span><b>🤝 Дараа төлөх</b><small>Ажилтан холбогдож төлбөрийг тохирно</small></span></label></div>
         ${err ? `<div class="co-err">${esc(err)}</div>` : ''}
-        <button class="co-go" ${busy ? 'disabled' : ''}>${busy ? 'Илгээж байна…' : payOn && f.pay !== 'later' ? `Захиалаад QPay-ээр төлөх · ${fmt(total(l))}` : `Захиалга илгээх · ${fmt(total(l))}`}</button>
-        ${payOn ? '' : '<p class="co-sum">Төлбөр: манай ажилтан захиалгыг баталгаажуулаад дансны мэдээлэл өгнө.</p>'}
+        <button class="co-go" ${busy ? 'disabled' : ''}>${busy ? 'Илгээж байна…' : goLabel(pm, fmt(total(l)))}</button>
       </form>`;
   }
 
@@ -182,7 +187,7 @@
     else if (a === 'paycheck') pollPay(true);
   });
   area.addEventListener('change', e => {
-    if (e.target.name === 'co-pay') { const b = area.querySelector('.co-go:not([data-co])'); if (b) b.textContent = (e.target.value === 'qpay' ? 'Захиалаад QPay-ээр төлөх · ' : 'Захиалга илгээх · ') + fmt(total(lines())); }
+    if (e.target.name === 'co-pay') { const b = area.querySelector('.co-go:not([data-co])'); if (b) b.textContent = goLabel(e.target.value, fmt(total(lines()))); }
     if (e.target.name === 'co-which') area.querySelector('#co-new').style.display = e.target.value === 'saved' ? 'none' : '';
     if (e.target.name === 'co-way') area.querySelector('#co-addr').style.display = e.target.value === 'pickup' ? 'none' : '';
     if (e.target.id === 'acc-a-city' && acc()) {
@@ -201,7 +206,7 @@
       const headers = { 'content-type': 'application/json' };
       const t = acc() && acc().token(); if (t) headers.authorization = 'Bearer ' + t;
       const res = await fetch(API + '/api/orders', { method: 'POST', headers, body: JSON.stringify({
-        items: l, name: v.name, phone: v.phone, email: v.email, delivery: v.delivery, address, addr: v.delivery === 'pickup' ? null : v.addr, note: v.note, pay: payOn ? v.pay : 'later' }) });
+        items: l, name: v.name, phone: v.phone, email: v.email, delivery: v.delivery, address, addr: v.delivery === 'pickup' ? null : v.addr, note: v.note, pay: v.pay === 'qpay' && !payOn ? 'later' : v.pay }) });
       const d = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(d.error || ('Алдаа ' + res.status));
       form = null;
@@ -397,7 +402,7 @@
       ${loadErr ? `<div class="co-err">${esc(loadErr)}</div>` : ''}
       ${!data ? '' : !list.length ? '<p class="note">Захиалга алга.</p>' : list.slice(page * PER, page * PER + PER).map(o => `<div class="ord-row">
         <div class="ord-head" data-o="${o.id}"><b>${esc(o.number)}</b><span>${dtm(o.createdAt)}</span><span>${esc(o.name)} · ${esc(o.phone)}</span>
-          <span>${o.delivery === 'pickup' ? '🏬 Очиж авна' : '🚚 Хүргэлт'}</span><span class="n">${fmt(o.total)}${o.paid ? ' <span title="QPay-ээр төлсөн">💳</span>' : o.payMethod === 'qpay' ? ' <span title="QPay төлбөр хүлээгдэж байна">⏳</span>' : ''}</span><span class="ord-st ${esc(o.status)}">${esc(o.statusText)}</span></div>
+          <span>${o.delivery === 'pickup' ? '🏬 Очиж авна' : '🚚 Хүргэлт'}</span><span class="n">${fmt(o.total)}${o.paid ? ' <span title="QPay-ээр төлсөн">💳</span>' : o.payMethod === 'qpay' ? ' <span title="QPay төлбөр хүлээгдэж байна">⏳</span>' : BNPL[o.payMethod] ? ` <span title="${BNPL[o.payMethod].name}">${BNPL[o.payMethod].icon}</span>` : ''}</span><span class="ord-st ${esc(o.status)}">${esc(o.statusText)}</span></div>
         ${openId === o.id ? `<div class="ord-body"><div><table>${o.items.map(i => `<tr><td><img src="${esc(i.image)}" alt="" loading="lazy"></td>
             <td><b>${esc(i.name)}</b>${i.size ? `<br>Хэмжээ: ${esc(i.size)}` : ''}${i.colorCode ? `<br>Өнгө: ${esc(i.colorCode)}` : ''}<br><small>${esc(i.brand)}${i.code ? ' · код ' + esc(i.code) : ''}</small></td>
             <td style="text-align:right;white-space:nowrap">${fmt(i.price)} × ${i.qty}<br><b>${fmt(i.price * i.qty)}</b></td></tr>`).join('')}
@@ -405,7 +410,7 @@
           <div><p><b>${esc(o.name)}</b><br>📞 <a href="tel:${esc(o.phone)}">${esc(o.phone)}</a>${o.email ? `<br>✉️ <a href="mailto:${esc(o.email)}">${esc(o.email)}</a>` : ''}${o.customerId ? '<br><small>Бүртгэлтэй хэрэглэгч</small>' : '<br><small>Зочин</small>'}</p>
             <p>${o.delivery === 'pickup' ? '🏬 Дэлгүүрээс очиж авна' : '🚚 ' + esc(o.address)}</p>${o.note ? `<p>📝 ${esc(o.note)}</p>` : ''}
             <p class="ord-pay ${o.paid ? 'ok' : ''}">${o.paid ? `💳 QPay-ээр төлсөн: <b>${fmt(o.paidAmount)}</b> · ${dtm(o.paidAt)}${o.paidAmount < o.total ? ' — ⚠ дутуу' : ''}`
-              : o.payMethod === 'qpay' ? `⏳ QPay төлбөр хүлээгдэж байна <button type="button" data-qc="${o.id}">QPay шалгах</button>` : '🤝 Дараа төлөх — ажилтан төлбөрийг тохирно'}</p>
+              : o.payMethod === 'qpay' ? `⏳ QPay төлбөр хүлээгдэж байна <button type="button" data-qc="${o.id}">QPay шалгах</button>` : BNPL[o.payMethod] ? `${BNPL[o.payMethod].icon} <b>${BNPL[o.payMethod].name}</b> — хэрэглэгчийн ${esc(o.phone)} дугаар руу ${BNPL[o.payMethod].name} нэхэмжлэх илгээнэ үү` : '🤝 Дараа төлөх — ажилтан төлбөрийг тохирно'}</p>
             ${o.priceCheck && o.priceCheck !== 'ok' ? `<p class="ord-warn">⚠ ${esc(o.priceCheck)}</p>` : ''}
             <label style="font-weight:700;font-size:13px">Төлөв</label><select data-st="${o.id}" style="width:100%;padding:8px;margin:4px 0 10px">${Object.keys(S).map(k => `<option value="${k}" ${k === o.status ? 'selected' : ''}>${esc(S[k])}</option>`).join('')}</select>
             <label style="font-weight:700;font-size:13px">Ажилтны тэмдэглэл</label><textarea data-sn="${o.id}" placeholder="Зөвхөн ажилтнуудад харагдана">${esc(o.staffNote)}</textarea>

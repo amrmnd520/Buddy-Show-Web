@@ -11,6 +11,10 @@ import { getErp } from './erp.js';
 // Prices are taken from the ERP by product code when the code is known (the site's price is only
 // used for products without an ERP code — those lines are flagged for staff to check).
 
+// Storepay / Pocket: «buy now, pay later» — staff sends the customer a Storepay/Pocket invoice by phone number.
+export const BNPL = { storepay: 'Storepay', pocket: 'Pocket' };
+const payLabel = (m) => (m === 'qpay' ? 'QPay' : BNPL[m] ? BNPL[m] + ' (хуваан төлөх)' : 'Дараа төлөх');
+
 export const STATUS = {
   new: 'Шинэ', confirmed: 'Баталгаажсан', paid: 'Төлбөр төлөгдсөн', shipping: 'Хүргэлтэнд гарсан',
   done: 'Хүргэгдсэн', cancelled: 'Цуцалсан',
@@ -122,16 +126,17 @@ export async function createOrder(request, env, customerId) {
   const total = items.reduce((s, i) => s + i.price * i.qty, 0);
   const now = new Date().toISOString();
   const payQ = b.pay === 'qpay' && qpay.enabled(env) && total > 0;
+  const method = payQ ? 'qpay' : (BNPL[b.pay] ? b.pay : 'later');
   const payKey = crypto.randomUUID().replace(/-/g, '');
 
   const r = await env.DB.prepare(`INSERT INTO orders (customer_id, created_at, updated_at, status, total, items, note, name, phone, email, address, addr, delivery, pay_method, pay_key, price_check)
     VALUES (?1, ?2, ?2, 'new', ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)`)
     .bind(customerId || 0, now, total, JSON.stringify(items), note, name, phone, email, address,
-      b.addr && typeof b.addr === 'object' ? JSON.stringify(b.addr).slice(0, 1000) : null, delivery, payQ ? 'qpay' : 'later', payKey, priceCheck).run();
+      b.addr && typeof b.addr === 'object' ? JSON.stringify(b.addr).slice(0, 1000) : null, delivery, method, payKey, priceCheck).run();
   const id = r.meta.last_row_id, number = `BS${1000 + id}`;
   await env.DB.prepare('UPDATE orders SET number = ?1 WHERE id = ?2').bind(number, id).run();
   const row = { id, number, created_at: now, status: 'new', total, items: JSON.stringify(items), name, phone, email, address, delivery, note,
-    customer_id: customerId, pay_method: payQ ? 'qpay' : 'later', price_check: priceCheck };
+    customer_id: customerId, pay_method: method, price_check: priceCheck };
   const o = orderView(row);
 
   if (payQ) {
@@ -156,10 +161,10 @@ export async function createOrder(request, env, customerId) {
   const jobs = [
     mail(env, env.ORDER_NOTIFY || 'info@buddyshop.mn', `🛒 Шинэ захиалга ${number} — ${money(total)} — ${name}`,
       orderHtml(o, `Сайтаас шинэ захиалга ирлээ: <b>${number}</b>`), `${number}\n${items.map(itemLine).join('\n')}\nНийт ${money(total)}\n${name} ${phone}\n${address}`),
-    telegram(env, tgText(o, `🛒 Шинэ захиалга ${number} · ⏳ төлбөр хийгдээгүй`)),
+    telegram(env, tgText(o, `🛒 Шинэ захиалга ${number} · ${BNPL[method] ? '🧾 ' + BNPL[method] + ' — нэхэмжлэх илгээх' : '⏳ төлбөр хийгдээгүй'}`)),
   ];
   if (email) jobs.push(mail(env, email, `Таны захиалга ${number} хүлээн авлаа — Buddy Shop`,
-    orderHtml(o, `Сайн байна уу${name ? ', ' + esc(name) : ''}! Таны <b>${number}</b> дугаартай захиалгыг хүлээн авлаа. Манай ажилтан удахгүй утсаар холбогдож, төлбөр болон хүргэлтийг баталгаажуулна.${o.delivery === 'pickup' ? '' : ' Хүргэлт маргааш өдөр хүргэгдэнэ.'}`),
+    orderHtml(o, `Сайн байна уу${name ? ', ' + esc(name) : ''}! Таны <b>${number}</b> дугаартай захиалгыг хүлээн авлаа. ${BNPL[method] ? `Та <b>${BNPL[method]}</b>-ээр хуваан төлөхийг сонгосон. Манай ажилтан удахгүй таны <b>${esc(phone)}</b> дугаар руу ${BNPL[method]} нэхэмжлэх илгээнэ — апп дээрээ баталгаажуулна уу.` : 'Манай ажилтан удахгүй утсаар холбогдож, төлбөр болон хүргэлтийг баталгаажуулна.'}${o.delivery === 'pickup' ? '' : ' Хүргэлт маргааш өдөр хүргэгдэнэ.'}`),
     `Таны ${number} захиалгыг хүлээн авлаа. Нийт ${money(total)}. Манай ажилтан удахгүй холбогдоно.`));
   await Promise.allSettled(jobs);
   return [200, { ok: true, order: o }];
@@ -216,7 +221,7 @@ async function serverPrices(env, items) {
 }
 
 function tgText(o, head) {
-  return `${head}\n${o.items.map(itemLine).join('\n')}\nНийт: ${money(o.total)}${o.priceCheck && o.priceCheck !== 'ok' ? '\n⚠ ' + o.priceCheck : ''}\n\n👤 ${o.name} · ${o.phone}${o.email ? ' · ' + o.email : ''}\n${o.delivery === 'pickup' ? '🏬 Дэлгүүрээс авна' : '🚚 ' + o.address}${o.note ? '\n📝 ' + o.note : ''}`;
+  return `${head}\n${o.items.map(itemLine).join('\n')}\nНийт: ${money(o.total)}${o.priceCheck && o.priceCheck !== 'ok' ? '\n⚠ ' + o.priceCheck : ''}\n\n👤 ${o.name} · ${o.phone}${o.email ? ' · ' + o.email : ''}\n${o.delivery === 'pickup' ? '🏬 Дэлгүүрээс авна' : '🚚 ' + o.address}${o.note ? '\n📝 ' + o.note : ''}\n💰 Төлбөр: ${payLabel(o.payMethod)}`;
 }
 
 // ---------- QPay: confirm a payment ----------

@@ -8,7 +8,7 @@ import * as tg from './telegram.js';
 import * as qpay from './qpay.js';
 import { createOrder, listOrders, updateOrder, qpayCallback, payStatus, staffCheck } from './orders.js';
 import { customerId, requestCode, verifyCode, passwordLogin, getAccount, updateAccount, deleteAccount, listCustomers, pruneCodes } from './customers.js';
-import { runBackup, listBackups, getBackupFile } from './backup.js';
+import { runBackup, listBackups, getBackupFile, backupNotice, latestText } from './backup.js';
 
 const JSON_HEADERS = { 'content-type': 'application/json; charset=utf-8' };
 const CORS = {
@@ -191,6 +191,41 @@ export default {
         return fail(404, 'Not found');
       }
 
+      // ---- database backups ----
+      // These files hold product cost and every customer's details, so they never leave without
+      // a credential. Two are accepted: a signed-in staff token, or BACKUP_TOKEN — a secret of
+      // its own for the monthly download script on the owner's Mac, so that script never has to
+      // keep a staff password and the secret can be rotated alone if the machine is lost.
+      if (path === '/api/backup' || path.startsWith('/api/backup/')) {
+        const bt = request.headers.get('x-backup-token') || '';
+        const byToken = !!env.BACKUP_TOKEN && sameText(bt, env.BACKUP_TOKEN);
+        if (!byToken && !(await whoIs(request, env))) return fail(401, 'Дахин нэвтэрнэ үү');
+
+        if (path === '/api/backup' && request.method === 'GET') {
+          const b = await listBackups(env);
+          const e = await env.IMAGES.get('backup/error.json');
+          return json({ ...b, lastError: e ? JSON.parse(await e.text()) : null }, 200, { 'cache-control': 'no-store' });
+        }
+        if (path === '/api/backup/latest.txt' && request.method === 'GET') {
+          return new Response(await latestText(env), { headers: { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-store' } });
+        }
+        if (path === '/api/backup/run' && request.method === 'POST') {
+          try { return json(await runBackup(env), 200, { 'cache-control': 'no-store' }); }
+          catch (e) { return fail(500, e.message); }
+        }
+        const bf = path.match(/^\/api\/backup\/(\d{4}-\d{2}-\d{2})\/([a-z_]+)$/);
+        if (bf && request.method === 'GET') {
+          const obj = await getBackupFile(env, bf[1], bf[2]);
+          if (!obj) return fail(404, 'Тийм нөөц алга');
+          return new Response(obj.body, { headers: {
+            'content-type': 'application/x-ndjson', 'content-encoding': 'gzip',
+            'content-disposition': `attachment; filename="${bf[1]}-${bf[2]}.ndjson.gz"`,
+            'cache-control': 'no-store',
+          } });
+        }
+        return fail(404, 'Not found');
+      }
+
       const user = await whoIs(request, env);
       if (!user) return fail(401, 'Дахин нэвтэрнэ үү');
       if (request.method === 'GET' && path === '/api/me') return json({ user });
@@ -203,27 +238,6 @@ export default {
           if (request.method === 'POST' && path === '/api/telegram/test') return json(await tg.test(env));
         } catch (e) { return fail(400, e.message); }
       }
-      // ---- database backups (staff only: these files hold cost and customer details) ----
-      if (path === '/api/backup' && request.method === 'GET') {
-        const b = await listBackups(env);
-        const e = await env.IMAGES.get('backup/error.json');
-        return json({ ...b, lastError: e ? JSON.parse(await e.text()) : null }, 200, { 'cache-control': 'no-store' });
-      }
-      if (path === '/api/backup/run' && request.method === 'POST') {
-        try { return json(await runBackup(env), 200, { 'cache-control': 'no-store' }); }
-        catch (e) { return fail(500, e.message); }
-      }
-      const bf = path.match(/^\/api\/backup\/(\d{4}-\d{2}-\d{2})\/([a-z_]+)$/);
-      if (bf && request.method === 'GET') {
-        const obj = await getBackupFile(env, bf[1], bf[2]);
-        if (!obj) return fail(404, 'Тийм нөөц алга');
-        return new Response(obj.body, { headers: {
-          'content-type': 'application/x-ndjson', 'content-encoding': 'gzip',
-          'content-disposition': `attachment; filename="${bf[1]}-${bf[2]}.ndjson.gz"`,
-          'cache-control': 'no-store',
-        } });
-      }
-
       if (request.method === 'GET' && path === '/api/orders') return json(await listOrders(env, url), 200, { 'cache-control': 'no-store' });
       const qc = path.match(/^\/api\/orders\/(\d+)\/qpay-check$/);
       if (qc && request.method === 'POST') { const r = await staffCheck(env, Number(qc[1])); return json(r[1], r[0]); }
@@ -275,8 +289,12 @@ export default {
     // so this is the only copy of the shop's history.
     if (event.cron === '30 19 * * *') {
       ctx.waitUntil(runBackup(env).then(
-        async (r) => { console.log('backup', r.date, r.rows, 'rows', r.ms + 'ms'); await env.IMAGES.delete('backup/error.json'); },
-        (e) => saveBackupError(env, e),
+        async (r) => {
+          console.log('backup', r.date, r.rows, 'rows', r.ms + 'ms');
+          await env.IMAGES.delete('backup/error.json');
+          await backupNotice(env, r, null).catch((e) => console.error('backup mail', e));
+        },
+        async (e) => { await saveBackupError(env, e); await backupNotice(env, null, e).catch(() => {}); },
       ));
       return;
     }

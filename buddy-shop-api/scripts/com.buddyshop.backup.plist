@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Buddy Shop — сарын нөөцлөлт. ~/Library/LaunchAgents/ дотор хуулаад:
+      launchctl load ~/Library/LaunchAgents/com.buddyshop.backup.plist
+  Сар бүрийн 1-ний 10:00-д ажиллана. Тэр үед компьютер унтарсан байвал
+  launchd дараагийн асаахад нь гүйцээж ажиллуулна.
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.buddyshop.backup</string>
+
+  <!-- $HOME-г launchd өөрөө тавьдаг тул хэрэглэгчийн нэрийг бичих шаардлагагүй. -->
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/sh</string>
+    <string>-c</string>
+    <string>exec "$HOME/Documents/Buddy Shop ERP/buddy-backup.sh"</string>
+  </array>
+
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Day</key><integer>1</integer>
+    <key>Hour</key><integer>10</integer>
+    <key>Minute</key><integer>0</integer>
+  </dict>
+
+  <key>RunAtLoad</key>
+  <false/>
+  <key>StandardOutPath</key>
+  <string>/tmp/buddy-backup.out</string>
+  <key>StandardErrorPath</key>
+  <string>/tmp/buddy-backup.err</string>
+</dict>
+</plist>

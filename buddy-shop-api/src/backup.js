@@ -154,10 +154,62 @@ export async function runBackup(env) {
   return report;
 }
 
+// A backup nobody looks at is one that quietly stopped working months ago, so the Worker writes
+// to the owner itself: on every failure, and once a month to say it is still running. The mail
+// carries counts and dates only — never a row of the data.
+async function mail(env, subject, html) {
+  const to = env.BACKUP_NOTIFY || env.ORDER_NOTIFY || 'info@buddyshop.mn';
+  if (!env.RESEND_API_KEY || !to) return;
+  const res = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: { authorization: `Bearer ${env.RESEND_API_KEY}`, 'content-type': 'application/json' },
+    body: JSON.stringify({ from: env.MAIL_FROM || 'Buddy Shop <info@buddyshop.mn>', to: [to], subject, html }),
+  });
+  if (!res.ok) console.error('backup mail', res.status, await res.text().catch(() => ''));
+}
+
+const wrap = (title, body) => `<div style="font-family:Arial,sans-serif;max-width:560px;margin:auto;padding:24px;color:#10202c">
+  <div style="font-weight:800;letter-spacing:1px;font-size:18px">▲ BUDDY SHOP</div>
+  <h2 style="font-size:17px">${title}</h2>${body}</div>`;
+
+export async function backupNotice(env, report, err) {
+  if (err) {
+    return mail(env, '⚠ Buddy Shop — нөөцлөлт амжилтгүй', wrap('Өгөгдлийн нөөцлөлт бүтсэнгүй', `
+      <p style="font-size:15px">Шөнийн нөөцлөлт алдаа өглөө. Supabase-ийн үнэгүй багцад өөр
+         нөөц байхгүй тул үүнийг удаан орхиж болохгүй.</p>
+      <pre style="background:#f5f3ee;padding:12px;border-radius:6px;font-size:13px;white-space:pre-wrap">${
+        String((err && err.message) || err).slice(0, 500)}</pre>`));
+  }
+  // Ulaanbaatar is UTC+8 and the job runs at 19:30 UTC, so the local date is what counts.
+  const localDay = new Date(Date.now() + 8 * 3600e3).getUTCDate();
+  if (localDay !== 1) return;
+  const rows = Object.entries(report.tables)
+    .sort((a, b) => b[1].rows - a[1].rows)
+    .map(([t, v]) => `<tr><td style="padding:3px 10px 3px 0">${t}</td>
+      <td style="text-align:right;padding:3px 0">${v.rows.toLocaleString('en-US')}</td></tr>`).join('');
+  await mail(env, 'Buddy Shop — сарын нөөцлөлтийн тайлан', wrap('Нөөцлөлт хэвийн ажиллаж байна', `
+    <p style="font-size:15px">Сүүлийн нөөцлөлт <b>${report.date}</b>,
+       нийт <b>${report.rows.toLocaleString('en-US')}</b> мөр. Сүүлийн 30 хоног хадгалагдаж байна.</p>
+    <table style="font-size:14px;border-collapse:collapse">${rows}</table>
+    <p style="font-size:13px;color:#5a6b76">Файлыг компьютер дээрээ татаж авах скрипт сард нэг
+       удаа ажилладаг. Хавтас хоосон байвал надад хэлээрэй.</p>`));
+}
+
 export async function listBackups(env) {
   const m = await env.IMAGES.get(PREFIX + 'manifest.json');
   if (!m) return { latest: null, history: [], tables: TABLES };
   return { ...JSON.parse(await m.text()), tables: TABLES };
+}
+
+// What the download script on the Mac reads: the newest backup's date on the first line, then
+// one table per line. Plain text on purpose — a shell script picking JSON apart with sed breaks
+// the first time the shape changes, and this script's whole job is to be dependable.
+export async function latestText(env) {
+  const m = await listBackups(env);
+  if (!m.latest) return 'none\n';
+  // date, then "<table>\t<rows>" — the row count lets the script prove the file it just pulled
+  // is whole instead of trusting that curl finished.
+  return [m.latest.date, ...Object.entries(m.latest.tables).map(([t, v]) => `${t}\t${v.rows}`)].join('\n') + '\n';
 }
 
 // Hands back one table's gzipped NDJSON. Staff-only; the caller checks the token.

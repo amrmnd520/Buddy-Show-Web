@@ -8,13 +8,13 @@
 # Түлхүүрийг файлд биш, Keychain-д хадгална. Нэг удаа тохируулахдаа:
 #   security add-generic-password -s buddy-backup -a buddy -w 'ТҮЛХҮҮР'
 #
-# Гараар ажиллуулж шалгах:  sh "$HOME/Documents/Buddy Shop ERP/buddy-backup.sh"
+# Гараар ажиллуулж шалгах:  sh "$HOME/Desktop/Buddy Shop ERP/buddy-backup.sh"
 
 set -eu
 
 # Ердийн үед эдгээрийг хөндөх шаардлагагүй; туршихад л дарж өөрчилнө.
 API="${BUDDY_API:-https://buddy-shop-api.taimenlodge.workers.dev}"
-DEST="${BUDDY_DEST:-$HOME/Documents/Buddy Shop ERP/Backup}"
+DEST="${BUDDY_DEST:-$HOME/Desktop/Buddy Shop ERP/Backup}"
 KEEP="${BUDDY_KEEP:-12}"      # сүүлийн 12 сарын хуулбарыг үлдээнэ
 
 mkdir -p "$DEST"

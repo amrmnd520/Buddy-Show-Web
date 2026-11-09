@@ -16,7 +16,7 @@
   <array>
     <string>/bin/sh</string>
     <string>-c</string>
-    <string>exec "$HOME/Documents/Buddy Shop ERP/buddy-backup.sh"</string>
+    <string>exec "$HOME/Desktop/Buddy Shop ERP/buddy-backup.sh"</string>
   </array>
 
   <key>StartCalendarInterval</key>

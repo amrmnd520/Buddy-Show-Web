@@ -43,9 +43,14 @@
 
   // the catalog list is drawn by render(), which reads the global `products`:
   // hand it the in-stock-first (or in-stock-only) list for the length of that call.
+  // Norfin winter suits → Өвлийн хэрэгсэл › Өвлийн хослол (also new Norfin «… Suit» products)
+  const SUIT_IDS = new Set([783599, 783596, 746037, 726176, 726173, 726172, 726171]);
+  const isSuit = p => SUIT_IDS.has(Number(p.id)) || (p.brand === 'Norfin' && /\bsuit\b/i.test(p.name || ''));
+  const fixSuits = list => list.forEach(p => { if (isSuit(p)) { p.category = 'Өвлийн хэрэгсэл'; p.subcategory = 'Өвлийн хослол'; } });
   const prev = window.render;
   window.render = function (...a) {
     const full = products;
+    fixSuits(full);
     const soldOut = full.filter(out).length;
     const small = label.querySelector('small');
     if (small) small.textContent = soldOut && staff() ? `(${soldOut} дууссан)` : '';

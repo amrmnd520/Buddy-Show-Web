@@ -39,8 +39,11 @@ function sbBase(env) {
   return { url, key };
 }
 
-// One whole table as NDJSON text, in one request. text/plain keeps PostgREST from wrapping a
-// multi-megabyte string in JSON escapes only for us to unescape it again.
+// One whole table as NDJSON text, in one request.
+//
+// The reply is asked for as JSON, not text/plain: PostgREST serves a scalar function as a JSON
+// string and refuses text/plain outright (PGRST107). So the body arrives JSON-escaped and
+// res.json() hands back the plain string.
 async function sbTable(env, table) {
   const { url, key } = sbBase(env);
   const res = await fetch(`${url}/rest/v1/rpc/backup_dump`, {
@@ -49,7 +52,7 @@ async function sbTable(env, table) {
       apikey: key,
       authorization: 'Bearer ' + key,
       'content-type': 'application/json',
-      accept: 'text/plain',
+      accept: 'application/json',
     },
     body: JSON.stringify({ tbl: table }),
   });
@@ -61,7 +64,8 @@ async function sbTable(env, table) {
     }
     throw new Error(`${table}: Supabase HTTP ${res.status}: ${t}`);
   }
-  return await res.text();
+  const out = await res.json();
+  return typeof out === 'string' ? out : '';
 }
 
 // Every table, gzipped into one object. Sections are marked with a line that cannot collide

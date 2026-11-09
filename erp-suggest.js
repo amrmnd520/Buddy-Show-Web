@@ -1,5 +1,5 @@
 /* Admin: "Эрэлттэй, сайтад байхгүй бараа"
-   Products that sell in the shop (Odoo POS, last 90 days) but are not on the website.
+   Products that sell in the shop (POS, last 90 days) but are not on the website.
    Data: buddy-shop-api GET /api/erp/top (refreshed daily 06:00, or with the button here).
    - "+ Сайтад нэмэх" creates the product with its ERP codes, price and stock; staff then add photos.
    - "Кодыг холбох" puts the codes on a similar website product that has no code yet.
@@ -115,7 +115,7 @@
     const d0 = data && data.updatedAt ? new Date(data.updatedAt) : null, pad = n => String(n).padStart(2, '0');
     const upd = d0 ? `${d0.getFullYear()}-${pad(d0.getMonth() + 1)}-${pad(d0.getDate())} ${pad(d0.getHours())}:${pad(d0.getMinutes())}` : '—';
     panel.innerHTML = `<div class="eyebrow">ERP · БОРЛУУЛАЛТ</div><h2>Эрэлттэй, сайтад байхгүй бараа ${data ? `<small style="font-size:16px;color:#5a6a72">(${r.length})</small>` : ''}</h2>
-      <p class="site-help">Сүүлийн ${data ? data.days : 90} хоногт дэлгүүрт (Odoo POS) зарагдсан ч сайт дээр кодоороо байхгүй бараа, борлуулалтаар эрэмбэлсэн. Өдөр бүр 06:00-д шинэчлэгдэнэ. Сүүлд шинэчилсэн: ${esc(upd)}</p>
+      <p class="site-help">Сүүлийн ${data ? data.days : 90} хоногт дэлгүүрт (POS) зарагдсан ч сайт дээр кодоороо байхгүй бараа, борлуулалтаар эрэмбэлсэн. Өдөр бүр 06:00-д шинэчлэгдэнэ. Сүүлд шинэчилсэн: ${esc(upd)}</p>
       ${!signedIn ? '<p class="site-help">Харахын тулд дээрх «Ажилтан нэвтрэх» хэсгээр нэвтэрнэ үү.</p>' : `
       <div class="erps-tools">
         <input type="search" id="erps-q" placeholder="Нэр, код, ERP ангиллаар хайх…" value="${esc(q)}">

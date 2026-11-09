@@ -1,4 +1,4 @@
-/* Prices and Emart stock from the Odoo ERP (via buddy-shop-api /api/erp, refreshed every 15 min).
+/* Prices and shop stock from the Buddy Shop ERP (pos.buddyshop.mn, via buddy-shop-api /api/erp, refreshed hourly 10:00–20:00).
    - Products are matched by their code (p.code). A row with several codes ("1623118 | 1623120")
      adds up the stock of all of them; the price comes from the first code that has one.
    - Price and stock from the ERP always win over catalog.js and admin edits.

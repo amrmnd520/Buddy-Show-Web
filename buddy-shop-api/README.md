@@ -75,20 +75,26 @@ window.BUDDY_API = 'https://buddy-shop-api.amrmnd.workers.dev';
 - Нэг барааг хоёр хүн яг зэрэг засвал сүүлд хадгалсных нь үлдэнэ.
 - `site-settings.js` (лого, онцлох бараа, цэс) хуучин шигээ эзэн нь удирдана.
 
-## ERP (Odoo) холболт — үнэ, Emart-ийн үлдэгдэл
+## ERP холболт (pos.buddyshop.mn → Supabase) — үнэ, үлдэгдэл
 
-15 минут тутам Odoo-оос (`erpdb`, WH/Stock = Buddy/Emart) барааны **үнэ** болон **үлдэгдлийг** татаж, сайт дээр кодоор нь тааруулж шинэчилнэ.
+Дэлгүүр нээлттэй цагт (10:00–20:00) цаг тутам Buddy Shop ERP-ийн Supabase өгөгдлийн сангаас барааны **үнэ** болон **үлдэгдлийг** татаж, сайт дээр кодоор нь тааруулж шинэчилнэ. Өртөг хэзээ ч татагдахгүй.
 - Үнэ, үлдэгдэл ERP-ээс ирдэг тул admin дээр гараар засахад дараагийн ачаалалтаар ERP-ийнхээр солигдоно.
 - Үлдэгдэл 0 бараа жагсаалтад хэвийн харагдана, дэлгэрэнгүй хуудсанд «Үлдэгдэлгүй» гэж гарч сагсанд нэмэгдэхгүй.
 - Кодгүй, эсвэл ERP-д олдоогүй кодтой бараа өөрчлөгдөхгүй.
 
 Нэг удаа тохируулах (Terminal):
 ```
-npx wrangler secret put ODOO_LOGIN      # Odoo нэвтрэх имэйл
-npx wrangler secret put ODOO_PASSWORD   # Odoo нууц үг
+npx wrangler secret put SUPABASE_URL   # https://bufyttlmwbofvzwudsws.supabase.co
+npx wrangler secret put SUPABASE_KEY   # service_role түлхүүр (зөвхөн Worker дээр)
+npx wrangler secret delete ODOO_LOGIN      # хуучин Odoo-гийн нууц утгыг устгана
+npx wrangler secret delete ODOO_PASSWORD
 npx wrangler deploy
 ```
-Шалгах: `https://buddy-shop-api.taimenlodge.workers.dev/api/erp/status`
+Шалгах: `https://buddy-shop-api.taimenlodge.workers.dev/api/erp/status` → `lastError: null`
+
+Нийтийн өгөгдөл (нэвтрэлтгүй):
+- `GET /api/erp` — код → [үнэ, үлдэгдэл] (вэбсайт)
+- `GET /api/erp/products` — идэвхтэй, үнэтэй бүх бараа: код, нэр, брэнд, ангилал, үнэ, үлдэгдэл (iPhone апп). Өртөг, нийлүүлэгч, борлуулалт агуулахгүй.
 
 ## Customer accounts (email code sign-in)
 

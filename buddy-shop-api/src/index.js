@@ -2,7 +2,7 @@
 // Stores products that were added, edited or deleted by staff on top of the
 // site's catalog.js, and serves product photos uploaded from the admin page.
 
-import { syncErp, getErp, getCatalog, syncTop, getTop, setDismissed } from './erp.js';
+import { syncErp, getErp, getCatalog, getProducts, syncTop, getTop, setDismissed } from './erp.js';
 import { track, stats, prune } from './stats.js';
 import * as tg from './telegram.js';
 import * as qpay from './qpay.js';
@@ -157,6 +157,10 @@ export default {
       if (request.method === 'GET' && path === '/api/erp') {
         return new Response(await getErp(env), { headers: { ...JSON_HEADERS, ...CORS, 'cache-control': 'public, max-age=300' } });
       }
+      // all active ERP products (code, name, brand, category, price, stock) — public, for the iPhone app
+      if (request.method === 'GET' && path === '/api/erp/products') {
+        return new Response(await getProducts(env), { headers: { ...JSON_HEADERS, ...CORS, 'cache-control': 'public, max-age=300' } });
+      }
       if (request.method === 'GET' && path === '/api/erp/status') {
         const d = JSON.parse(await getErp(env));
         const e = await env.IMAGES.get('erp/error.json');
@@ -278,7 +282,7 @@ export default {
     }
   },
 
-  // Every 15 minutes: copy prices and shop stock from Odoo (see erp.js).
+  // Hourly in shop hours: copy prices and shop stock from the Buddy Shop ERP (Supabase, see erp.js).
   async scheduled(event, env, ctx) {
     // Daily (06:00 Ulaanbaatar): POS best sellers for the admin suggestions.
     if (event.cron === '0 22 * * *') {

@@ -67,7 +67,7 @@ Restore (if ever needed)
 - Code: unzip, or clone from GitHub, then in buddy-shop-api/: npx wrangler deploy
 - Database: npx wrangler d1 execute buddy-shop --remote --file database.sql   (into an empty database)
 - Secrets: npx wrangler secret put NAME   for each name in secrets-names.txt
-           (USERS, TOKEN_SECRET, ODOO_LOGIN, ODOO_PASSWORD, RESEND_API_KEY, TELEGRAM_BOT_TOKEN,
+           (USERS, TOKEN_SECRET, SUPABASE_URL, SUPABASE_KEY, BACKUP_TOKEN, RESEND_API_KEY, TELEGRAM_BOT_TOKEN,
             QPAY_USERNAME, QPAY_PASSWORD, QPAY_INVOICE_CODE)
 - Telegram chats: r2/settings_telegram.json → npx wrangler r2 object put buddy-shop-images/settings/telegram.json --remote --file r2/settings_telegram.json
 TXT

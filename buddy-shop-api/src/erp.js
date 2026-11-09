@@ -11,6 +11,7 @@
 
 const KEY = 'erp/stock.json';
 const CATALOG_KEY = 'erp/catalog.json';
+const PRODUCTS_KEY = 'erp/products.json';
 const PAGE = 1000;
 
 function sbBase(env) {
@@ -53,12 +54,15 @@ async function sbAll(env, path, cap = 20000) {
 export async function syncErp(env) {
   const started = Date.now();
 
-  // Only what the website may see: code, name, sale price, stock. Never cost.
-  const rows = await sbAll(env, 'products?select=sku,name,price,qty&sku=not.is.null&order=id.asc');
+  // Only what the website may see: code, name, brand, category, sale price, stock. Never cost.
+  const rows = await sbAll(env, 'products?select=sku,name,brand,category,price,qty,active&sku=not.is.null&order=id.asc');
 
-  // Compact map: CODE -> [price, qty] (public, small) + names for staff tools.
+  // Compact map: CODE -> [price, qty] (public, small) + names for staff tools
+  // + the public product list for the iPhone app (active products only).
   const items = {};
   const named = [];
+  const listed = new Map();
+  const clean = (s) => String(s || '').replace(/\s+/g, ' ').trim();
   for (const r of rows) {
     const code = String(r.sku || '').trim().toUpperCase().replace(/\s+/g, ' ');
     if (!code) continue;
@@ -72,6 +76,11 @@ export async function syncErp(env) {
       price,
       qty,
     ]);
+    if (r.active !== false && price > 0) {
+      const had = listed.get(code);
+      if (had) had[5] += qty;                  // same code twice → one product, stock added
+      else listed.set(code, [clean(r.sku), clean(r.name), clean(r.brand), clean(r.category), price, qty]);
+    }
   }
 
   if (!Object.keys(items).length) throw new Error('Supabase-ээс бараа ирсэнгүй — хуучин өгөгдлийг хэвээр үлдээв');
@@ -89,7 +98,20 @@ export async function syncErp(env) {
   await env.IMAGES.put(CATALOG_KEY, JSON.stringify({ updatedAt: out.updatedAt, items: named }), {
     httpMetadata: { contentType: 'application/json; charset=utf-8' },
   });
+  await env.IMAGES.put(PRODUCTS_KEY, JSON.stringify({
+    updatedAt: out.updatedAt,
+    fields: ['code', 'name', 'brand', 'category', 'price', 'qty'],
+    count: listed.size,
+    items: [...listed.values()],
+  }), { httpMetadata: { contentType: 'application/json; charset=utf-8' } });
   return { updatedAt: out.updatedAt, count: out.count, ms: out.ms };
+}
+
+// Every active ERP product with a price — public, for the iPhone app. Same fields the
+// website already shows (no cost, no supplier, no sales). Refreshed with the price sync.
+export async function getProducts(env) {
+  const obj = await env.IMAGES.get(PRODUCTS_KEY);
+  return obj ? obj.text() : JSON.stringify({ updatedAt: null, fields: [], count: 0, items: [] });
 }
 
 // Every ERP product with its name — for staff tools only (served behind login).

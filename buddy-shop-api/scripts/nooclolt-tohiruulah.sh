@@ -61,7 +61,9 @@ CODE=$(curl -sS -o "$BODY" -w '%{http_code}' --max-time 180 \
 OUT=$(cat "$BODY" 2>/dev/null); rm -f "$BODY"
 [ "$CODE" = "200" ] || fail "Нөөцлөлт ажиллахгүй байна (HTTP $CODE). Серверийн хариу:
     $OUT"
-ROWS=$(printf '%s' "$OUT" | sed -n 's/.*"rows": *\([0-9]*\).*/\1/p')
+# Эхний "rows" нь нийт дүн; дараа нь хүснэгт бүрийнх давтагддаг тул head -1 заавал
+# (шуналтай тааруулалт сүүлийнхийг нь авч "0 мөр" гэж худал харуулж байсан).
+ROWS=$(printf '%s' "$OUT" | grep -o '"rows":[0-9]*' | head -1 | cut -d: -f2)
 [ -n "$ROWS" ] || ROWS="?"
 ok "сервер дээр нөөц үүслээ — $ROWS мөр"
 

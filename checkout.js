@@ -115,14 +115,14 @@
     if (!l.length) { area.innerHTML = ''; view = 'cart'; return; }
     if (view === 'cart') {
       area.innerHTML = `<button class="co-go" data-co="checkout">Захиалга өгөх →</button>
-        <p class="co-sum">${payOn ? 'QPay-ээр шууд, Storepay эсвэл Pocket-оор хуваан төлөх боломжтой.' : 'Storepay, Pocket-оор хуваан төлөх эсвэл ажилтантай тохирч төлөх боломжтой.'}</p>`;
+        <p class="co-sum">${payOn ? 'QPay-ээр шууд, эсвэл Storepay, Pocket-оор хуваан төлөх боломжтой.' : 'Storepay эсвэл Pocket-оор хуваан төлөх боломжтой.'}</p>`;
       return;
     }
     // checkout form
     const f = form || {
       name: a ? a.name : '', phone: a ? a.phone : '', email: a ? a.email : '', delivery: 'delivery', note: '', save: false, pay: 'qpay',
     };
-    const pm = f.pay === 'qpay' && !payOn ? 'later' : (f.pay || 'later');
+    const pm = (f.pay === 'qpay' && payOn) || BNPL[f.pay] ? f.pay : (payOn ? 'qpay' : 'storepay');
     const saved = savedAddr(a);
     const which = saved ? ((form && form.which) || 'saved') : 'new';
     const newSrc = { addr: form && form.which === 'new' && form.addr ? form.addr : (saved ? {} : ((a && a.addr) || {})) };
@@ -149,8 +149,7 @@
         <div class="co-sec">Төлбөр</div>
         <div class="co-which">${payOn ? `<label><input type="radio" name="co-pay" value="qpay" ${pm === 'qpay' ? 'checked' : ''}><span><b>💳 QPay-ээр одоо төлөх</b><small>QR код эсвэл банкны апп-аар шууд</small></span></label>` : ''}
           <label><input type="radio" name="co-pay" value="storepay" ${pm === 'storepay' ? 'checked' : ''}><span><b>🟣 Storepay — хуваан төлөх</b><small>Ажилтан таны утас руу Storepay нэхэмжлэх илгээнэ</small></span></label>
-          <label><input type="radio" name="co-pay" value="pocket" ${pm === 'pocket' ? 'checked' : ''}><span><b>🟢 Pocket — хуваан төлөх</b><small>Ажилтан таны утас руу Pocket нэхэмжлэх илгээнэ</small></span></label>
-          <label><input type="radio" name="co-pay" value="later" ${pm === 'later' ? 'checked' : ''}><span><b>🤝 Дараа төлөх</b><small>Ажилтан холбогдож төлбөрийг тохирно</small></span></label></div>
+          <label><input type="radio" name="co-pay" value="pocket" ${pm === 'pocket' ? 'checked' : ''}><span><b>🟢 Pocket — хуваан төлөх</b><small>Ажилтан таны утас руу Pocket нэхэмжлэх илгээнэ</small></span></label></div>
         ${err ? `<div class="co-err">${esc(err)}</div>` : ''}
         <button class="co-go" ${busy ? 'disabled' : ''}>${busy ? 'Илгээж байна…' : goLabel(pm, fmt(total(l)))}</button>
       </form>`;
@@ -165,7 +164,7 @@
     return {
       name: g('co-name').trim(), phone: g('co-phone').trim(), email: g('co-email').trim(), note: g('co-note').trim(),
       delivery: way ? way.value : 'delivery', which, save: !!area.querySelector('#co-save')?.checked,
-      pay: (area.querySelector('input[name="co-pay"]:checked') || {}).value || (payOn ? 'qpay' : 'later'),
+      pay: (area.querySelector('input[name="co-pay"]:checked') || {}).value || (payOn ? 'qpay' : 'storepay'),
       addr: which === 'saved' ? { ...a.addr } : (acc() && area.querySelector('#co-new') ? acc().readAddr(area.querySelector('#co-new')) : {}),
     };
   }
@@ -206,7 +205,7 @@
       const headers = { 'content-type': 'application/json' };
       const t = acc() && acc().token(); if (t) headers.authorization = 'Bearer ' + t;
       const res = await fetch(API + '/api/orders', { method: 'POST', headers, body: JSON.stringify({
-        items: l, name: v.name, phone: v.phone, email: v.email, delivery: v.delivery, address, addr: v.delivery === 'pickup' ? null : v.addr, note: v.note, pay: v.pay === 'qpay' && !payOn ? 'later' : v.pay }) });
+        items: l, name: v.name, phone: v.phone, email: v.email, delivery: v.delivery, address, addr: v.delivery === 'pickup' ? null : v.addr, note: v.note, pay: v.pay === 'qpay' && !payOn ? 'storepay' : v.pay }) });
       const d = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(d.error || ('Алдаа ' + res.status));
       form = null;

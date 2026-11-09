@@ -298,10 +298,14 @@ export default {
       ));
       return;
     }
-    ctx.waitUntil(syncErp(env).then(
-      async (r) => { console.log('erp sync', r); await env.IMAGES.delete('erp/error.json'); },
-      (e) => saveErpError(env, e),
-    ));
+    // Hourly while the shop is open (10:00–20:00 Ulaanbaatar). Named rather than left as the
+    // fallback so that adding a cron later cannot silently turn into a price sync.
+    if (event.cron === '0 2-12 * * *') {
+      ctx.waitUntil(syncErp(env).then(
+        async (r) => { console.log('erp sync', r); await env.IMAGES.delete('erp/error.json'); },
+        (e) => saveErpError(env, e),
+      ));
+    }
   },
 };
 

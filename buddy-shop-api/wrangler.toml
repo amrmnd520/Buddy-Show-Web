@@ -2,12 +2,17 @@ name = "buddy-shop-api"
 main = "src/index.js"
 compatibility_date = "2026-10-01"
 
-# Buddy Shop ERP (Supabase) → prices and shop stock, every 15 minutes
+# Buddy Shop ERP (Supabase) → prices and shop stock for the website.
+#
+# Cron is UTC and the shop is UTC+8, so 2-12 is 10:00–20:00 in Ulaanbaatar: the hours the shop
+# is open and stock actually moves. Hourly rather than every 15 minutes — the old schedule ran
+# 96 times a day and pulled all 4,107 products each time, which was most of the project's
+# Supabase egress for stock that barely changes overnight.
 [triggers]
 # A Worker's subrequest budget is per invocation, so the nightly backup gets a slot of its own
 # rather than sharing one with the best-sellers job — together they would overrun it.
 crons = [
-  "*/15 * * * *",   # price / stock from the ERP
+  "0 2-12 * * *",   # 10:00–20:00 Ulaanbaatar, hourly — price / stock from the ERP
   "0 22 * * *",     # 06:00 Ulaanbaatar — best sellers
   "30 19 * * *",    # 03:30 Ulaanbaatar — database backup into R2
 ]

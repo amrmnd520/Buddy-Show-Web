@@ -11,12 +11,14 @@
   <key>Label</key>
   <string>com.buddyshop.backup</string>
 
-  <!-- $HOME-г launchd өөрөө тавьдаг тул хэрэглэгчийн нэрийг бичих шаардлагагүй. -->
+  <!-- $HOME-г launchd өөрөө тавьдаг тул хэрэглэгчийн нэрийг бичих шаардлагагүй.
+       Скриптийг /bin/sh-д аргумент болгож өгч байгаа тул гүйцэтгэх эрэг (chmod +x)
+       шаардлагагүй — Desktop iCloud-д синк хийгдэхэд тэр эрх заримдаа алдагддаг. -->
   <key>ProgramArguments</key>
   <array>
     <string>/bin/sh</string>
     <string>-c</string>
-    <string>exec "$HOME/Desktop/Buddy Shop ERP/buddy-backup.sh"</string>
+    <string>exec /bin/sh "$HOME/Desktop/Buddy Shop ERP/buddy-backup.sh"</string>
   </array>
 
   <key>StartCalendarInterval</key>

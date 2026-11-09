@@ -57,22 +57,27 @@
     const bSel = $('brand'), cSel = $('category'), sSel = $('subcategory'); if (!bSel || !cSel || !sSel) return;
     const esc = t => String(t).replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
     const B = bSel.value || 'Бүх брэнд', C = cSel.value || 'Бүгд', S = sSel.value || '';
-    const inBrand = products.filter(p => B === 'Бүх брэнд' || p.brand === B);
     const catOk = (p, c) => (typeof categoryMatches === 'function' ? categoryMatches(p, c) : (c === 'Бүгд' || p.category === c));
     const subsOf = p => (typeof productSubcategories === 'function' ? productSubcategories(p) : []);
-    // 1. brands: all, with counts
-    const bc = new Map(); products.forEach(p => p.brand && bc.set(p.brand, (bc.get(p.brand) || 0) + 1));
+    // each list only offers what exists together with the other two choices (any order works)
+    const okB = p => B === 'Бүх брэнд' || p.brand === B;
+    const okC = p => catOk(p, C);
+    const okS = p => !S || subsOf(p).includes(S);
+    // 1. brands inside the chosen category / sub-category
+    const forB = products.filter(p => okC(p) && okS(p));
+    const bc = new Map(); forB.forEach(p => p.brand && bc.set(p.brand, (bc.get(p.brand) || 0) + 1));
     const brands = [...bc.keys()].sort((x, y) => x.localeCompare(y, 'en', { sensitivity: 'base' }));
     if (B !== 'Бүх брэнд' && !bc.has(B)) brands.unshift(B);
-    bSel.innerHTML = `<option value="Бүх брэнд">Бүх брэнд${n(products.length)}</option>` + brands.map(b => `<option value="${esc(b)}">${esc(b)}${n(bc.get(b) || 0)}</option>`).join('');
+    bSel.innerHTML = `<option value="Бүх брэнд">Бүх брэнд${n(forB.length)}</option>` + brands.map(b => `<option value="${esc(b)}">${esc(b)}${n(bc.get(b) || 0)}</option>`).join('');
     bSel.value = B;
     // 2. categories that this brand has
+    const inBrand = products.filter(okB);
     const list = (typeof cats !== 'undefined' ? cats : ['Бүгд']).filter(c => c !== 'Бүгд');
-    const cc = list.map(c => [c, inBrand.filter(p => catOk(p, c)).length]).filter(([c, n]) => n || c === C);
+    const cc = list.map(c => [c, inBrand.filter(p => catOk(p, c)).length]).filter(([c, k]) => k || c === C);
     cSel.innerHTML = `<option value="Бүгд">Бүх ангилал${n(inBrand.length)}</option>` + cc.map(([c, k]) => `<option value="${esc(c)}">${esc(c)}${n(k)}</option>`).join('');
     cSel.value = C;
     // 3. sub-categories inside brand + category
-    const inCat = inBrand.filter(p => catOk(p, C));
+    const inCat = inBrand.filter(okC);
     const sc = new Map(); inCat.forEach(p => subsOf(p).forEach(x => sc.set(x, (sc.get(x) || 0) + 1)));
     const subs = [...sc.keys()].sort((x, y) => x.localeCompare(y, 'mn'));
     if (S && !sc.has(S)) subs.unshift(S);

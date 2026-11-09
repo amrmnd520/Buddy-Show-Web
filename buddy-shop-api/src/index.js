@@ -6,7 +6,8 @@ import { syncErp, getErp, getCatalog, syncTop, getTop, setDismissed } from './er
 import { track, stats, prune } from './stats.js';
 import * as tg from './telegram.js';
 import * as qpay from './qpay.js';
-import { createOrder, listOrders, updateOrder, qpayCallback, payStatus, staffCheck } from './orders.js';
+import * as storepay from './storepay.js';
+import { createOrder, listOrders, updateOrder, qpayCallback, storepayCallback, payStatus, staffCheck } from './orders.js';
 import { customerId, requestCode, verifyCode, passwordLogin, getAccount, updateAccount, deleteAccount, listCustomers, pruneCodes } from './customers.js';
 
 const JSON_HEADERS = { 'content-type': 'application/json; charset=utf-8' };
@@ -163,7 +164,8 @@ export default {
 
       // ---- QPay ----
       if (path === '/api/qpay/callback') return qpayCallback(env, url);
-      if (path === '/api/qpay/status') return json({ enabled: qpay.enabled(env) }, 200, { 'cache-control': 'no-store' });
+      if (path === '/api/storepay/callback') return storepayCallback(env, url);
+      if (path === '/api/qpay/status') return json({ enabled: qpay.enabled(env), storepay: storepay.enabled(env) }, 200, { 'cache-control': 'no-store' });
       const pm = path.match(/^\/api\/orders\/(\d+)\/pay$/);
       if (pm && request.method === 'GET') {
         const r = await payStatus(env, Number(pm[1]), url.searchParams.get('k'), url.searchParams.get('check') === '1');

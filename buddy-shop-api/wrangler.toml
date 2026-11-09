@@ -32,5 +32,7 @@ bucket_name = "buddy-shop-images"
 #   TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID = optional: new-order alerts in Telegram
 #   ORDER_NOTIFY = optional: where new-order emails go (default info@buddyshop.mn)
 #   QPAY_USERNAME, QPAY_PASSWORD, QPAY_INVOICE_CODE = QPay merchant API v2 (from the QPay contract)
+#   STOREPAY_APP_USERNAME, STOREPAY_APP_PASSWORD, STOREPAY_USERNAME, STOREPAY_PASSWORD, STOREPAY_STORE_ID = Storepay merchant API
+#     (optional vars STOREPAY_AUTH_URL / STOREPAY_URL if Storepay gives addresses other than auth.storepay.mn / api.storepay.mn)
 # Optional vars: QPAY_URL (default https://merchant.qpay.mn; sandbox https://merchant-sandbox.qpay.mn),
 #   SITE_URL (where catalog.js is read for server-side prices; default https://amrmnd520.github.io/Buddy-Show-Web)

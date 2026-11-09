@@ -29,6 +29,7 @@ LIST=$(curl -fsS --max-time 60 -H "x-backup-token: $TOKEN" "$API/api/backup/late
   || die "Серверээс жагсаалт авч чадсангүй (сүлжээ, эсвэл түлхүүр буруу)."
 
 DATE=$(printf '%s\n' "$LIST" | sed -n '1p')
+WANT=$(printf '%s\n' "$LIST" | sed -n '3p')
 case "$DATE" in
   20[0-9][0-9]-[0-1][0-9]-[0-3][0-9]) ;;
   *) die "Сервер дээр нөөц алга (хариу: $DATE)" ;;
@@ -36,23 +37,17 @@ esac
 
 TMP="$DEST/.tmp-$DATE"
 rm -rf "$TMP"; mkdir -p "$TMP"
-printf '%s\n' "$LIST" | sed -n '2,$p' > "$TMP/.tables"
+F="$TMP/buddy-$DATE.ndjson.gz"
 
-TAB=$(printf '\t')
-total=0
-while IFS="$TAB" read -r t want; do
-  [ -n "$t" ] || continue
-  f="$TMP/$t.ndjson.gz"
-  curl -fsS --max-time 300 -H "x-backup-token: $TOKEN" -o "$f" "$API/api/backup/$DATE/$t" \
-    || die "$t татагдсангүй."
-  gzip -t "$f" 2>/dev/null || die "$t эвдэрсэн файл болж татагдлаа."
-  # Мөрийн тоог сервер дээрхтэй тулгана: тасалдсан татлага чимээгүй өнгөрч болохгүй.
-  got=$(gunzip -c "$f" | wc -l | tr -d ' ')
-  [ "$got" = "$want" ] || die "$t дутуу: $got мөр татагдсан, $want байх ёстой."
-  total=$((total + got))
-done < "$TMP/.tables"
+curl -fsS --max-time 600 -H "x-backup-token: $TOKEN" -o "$F" "$API/api/backup/$DATE" \
+  || die "Нөөц татагдсангүй."
+gzip -t "$F" 2>/dev/null || die "Татсан файл эвдэрсэн байна."
 
-rm -f "$TMP/.tables"
+# Мөрийн тоог сервер дээрхтэй тулгана: тасалдсан татлага чимээгүй өнгөрч болохгүй.
+# '#table …' мөрүүд нь хүснэгт хоорондын заагч тул тоонд оруулахгүй.
+total=$(gunzip -c "$F" | grep -vc '^#table ' || true)
+[ "$total" = "$WANT" ] || die "Дутуу татагдлаа: $total мөр, $WANT байх ёстой."
+
 rm -rf "$DEST/$DATE"
 mv "$TMP" "$DEST/$DATE"
 say "$DATE — $total мөр татлаа."

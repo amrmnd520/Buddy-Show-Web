@@ -5,33 +5,32 @@
 // statement, or one device token that walks out of the shop, could erase five years of sales
 // with nothing to restore from. This is the missing copy.
 //
-// Runs on the daily cron. Reads through PostgREST with the SUPABASE_KEY that erp.js already
-// uses, so there is no new secret to store. Each table is streamed into R2 as gzipped NDJSON a
-// page at a time, so a large table never has to sit in the Worker's memory in one piece.
+// Reads through PostgREST with the SUPABASE_KEY that erp.js already uses, so there is no new
+// secret to store. The dump holds product cost and every customer's name, phone and order
+// history, so it is served only against a token, never cached, and never publicly.
 //
-// The dump holds product cost and every customer's name, phone and order history, so it is
-// served only to a signed-in staff member, never cached, and never without a token.
+// Everything here is shaped by one hard limit: a Worker may make only ~50 subrequests per
+// invocation on the free plan, and calls to R2 count too. PostgREST caps a normal select at
+// 1000 rows, so paging 60,000 rows would need 60+ requests and the job died half way through.
+//
+// Instead each table is read through the backup_dump() function (sql/08_backup.sql), which
+// returns the whole table as one row of NDJSON text — one row, so the 1000-row cap does not
+// apply. That is exactly one request per table no matter how far the shop grows, and the whole
+// night goes into a single R2 object rather than eighteen.
 
-// Big pages on purpose: a Worker may only make so many subrequests per invocation, and 18 tables
-// paged a thousand rows at a time would run into that ceiling and stop half way through.
-const PAGE = 10000;
-const MAX_PAGES = 200;        // a runaway loop must not spend the whole request budget
 const KEEP_DAYS = 30;
 const PREFIX = 'backup/';
+const FILE = 'all.ndjson.gz';
 
 // `ops` leads because it is the source of truth: the database triggers materialize every other
 // sales table from it, so a restore that replays ops rebuilds them. The rest are copied anyway —
-// replaying 100k ops to read last year's figures would be absurd.
+// replaying every operation just to read last year's figures would be absurd.
 export const TABLES = [
   'ops', 'settings', 'vendors', 'products', 'customers',
   'sales', 'sale_lines', 'sale_payments', 'returns', 'return_lines',
   'receipts', 'receipt_lines', 'stocktakes', 'stocktake_lines',
   'shifts', 'cash_moves', 'audit_log', 'staff',
 ];
-
-// Paging needs a stable sort, and these three do not all have the same key.
-const ORDER = { ops: 'seq', settings: 'key' };
-const orderBy = (t) => ORDER[t] || 'id';
 
 function sbBase(env) {
   const url = String(env.SUPABASE_URL || '').replace(/\/+$/, '');
@@ -40,36 +39,42 @@ function sbBase(env) {
   return { url, key };
 }
 
-async function sbPage(env, table, from, to) {
+// One whole table as NDJSON text, in one request. text/plain keeps PostgREST from wrapping a
+// multi-megabyte string in JSON escapes only for us to unescape it again.
+async function sbTable(env, table) {
   const { url, key } = sbBase(env);
-  const res = await fetch(`${url}/rest/v1/${table}?select=*&order=${orderBy(table)}.asc`, {
+  const res = await fetch(`${url}/rest/v1/rpc/backup_dump`, {
+    method: 'POST',
     headers: {
       apikey: key,
       authorization: 'Bearer ' + key,
-      accept: 'application/json',
-      range: `${from}-${to}`,
-      'range-unit': 'items',
+      'content-type': 'application/json',
+      accept: 'text/plain',
     },
+    body: JSON.stringify({ tbl: table }),
   });
   if (!res.ok) {
     const t = (await res.text()).replace(/\s+/g, ' ').slice(0, 200);
+    if (res.status === 404) {
+      throw new Error('backup_dump функц олдсонгүй — sql/08_backup.sql-ийг Supabase дээр '
+        + `нэг удаа ажиллуулна уу. (${table}: HTTP 404: ${t})`);
+    }
     throw new Error(`${table}: Supabase HTTP ${res.status}: ${t}`);
   }
-  return res.json();
+  return await res.text();
 }
 
-// One table → one gzipped NDJSON object in R2.
-//
-// R2 refuses a stream whose length it does not know ("Provided readable stream must have a known
-// length"), and gzip output has no length until it is finished — so the rows are compressed as
-// they arrive but the compressed chunks are collected and stored as one sized buffer. Only the
-// compressed bytes and a single page of rows are ever held, not the whole table.
-async function dumpTable(env, table, dir) {
-  const key = `${PREFIX}${dir}/${table}.ndjson.gz`;
+// Every table, gzipped into one object. Sections are marked with a line that cannot collide
+// with a row, since every row is a JSON object and so always starts with '{'.
+const MARK = '#table ';
+
+async function dumpAll(env, dir) {
   const { readable, writable } = new TransformStream();
   const reader = readable.pipeThrough(new CompressionStream('gzip')).getReader();
 
-  // Must drain while writing: a full pipe would otherwise block the writer for ever.
+  // R2 refuses a stream whose length it cannot know, and gzip has no length until it ends, so
+  // the compressed chunks are collected and stored as one sized buffer. Draining has to happen
+  // while writing or a full pipe would block the writer for ever.
   const chunks = [];
   let gz = 0;
   const drain = (async () => {
@@ -82,28 +87,23 @@ async function dumpTable(env, table, dir) {
 
   const w = writable.getWriter();
   const enc = new TextEncoder();
-  let rows = 0, raw = 0;
+  const tables = {};
+  let raw = 0;
+  const write = async (s) => { const b = enc.encode(s); raw += b.length; await w.write(b); };
+
   try {
-    // Advance by what actually came back, and stop only on an empty page. PostgREST may return
-    // fewer rows than asked for — Supabase can cap the page size server-side — and treating a
-    // short page as the end would silently truncate the table and leave a useless backup.
-    let from = 0, pages = 0;
-    for (;;) {
-      if (++pages > MAX_PAGES) throw new Error(`${table}: ${MAX_PAGES} хуудаснаас хэтэрлээ`);
-      const batch = await sbPage(env, table, from, from + PAGE - 1);
-      if (!batch.length) break;
-      let chunk = '';
-      for (const r of batch) chunk += JSON.stringify(r) + '\n';
-      const bytes = enc.encode(chunk);
-      raw += bytes.length;
-      await w.write(bytes);
-      rows += batch.length;
-      from += batch.length;
+    for (const table of TABLES) {
+      const body = await sbTable(env, table);
+      const text = body.length && !body.endsWith('\n') ? body + '\n' : body;
+      await write(MARK + table + '\n');
+      if (text) await write(text);
+      // Every row is one line; an empty table returns an empty string.
+      let rows = 0;
+      for (let i = 0; i < text.length; i++) if (text.charCodeAt(i) === 10) rows++;
+      tables[table] = { rows };
     }
     await w.close();
   } catch (e) {
-    // Nothing is written to R2 on the way out, so a failed table simply leaves yesterday's
-    // object in place rather than replacing it with half of today's.
     try { await w.abort(e); } catch { /* already closed */ }
     await drain.catch(() => {});
     throw e;
@@ -113,10 +113,10 @@ async function dumpTable(env, table, dir) {
   const body = new Uint8Array(gz);
   let at = 0;
   for (const c of chunks) { body.set(c, at); at += c.length; }
-  await env.IMAGES.put(key, body, {
+  await env.IMAGES.put(`${PREFIX}${dir}/${FILE}`, body, {
     httpMetadata: { contentType: 'application/x-ndjson', contentEncoding: 'gzip' },
   });
-  return { rows, raw, stored: gz };
+  return { tables, raw, stored: gz };
 }
 
 // Keep the last KEEP_DAYS dated folders; drop the rest.
@@ -139,30 +139,26 @@ async function prune(env, keepDir) {
 
 export async function runBackup(env) {
   const started = Date.now();
-  sbBase(env);                  // fail on a misconfigured deploy, not with 18 identical errors
+  sbBase(env);                  // fail on a misconfigured deploy, not once per table
   const dir = new Date().toISOString().slice(0, 10);
-  const tables = {};
-  const failed = [];
 
-  for (const t of TABLES) {
-    try {
-      tables[t] = await dumpTable(env, t, dir);
-    } catch (e) {
-      failed.push({ table: t, error: String((e && e.message) || e) });
-    }
-  }
+  const { tables, raw, stored } = await dumpAll(env, dir);
 
-  // A backup that lost a table is not a backup — say so loudly rather than overwriting the
-  // manifest with a cheerful one.
-  const total = Object.values(tables).reduce((s, t) => s + t.rows, 0);
+  // Each table arrives whole or not at all, so there is no partial-table case left to check;
+  // a database with no products at all, though, means something is badly wrong.
+  const short = tables.products && tables.products.rows === 0 ? ['products 0'] : [];
+
   const report = {
     date: dir,
     at: new Date().toISOString(),
     ms: Date.now() - started,
-    ok: failed.length === 0,
-    rows: total,
+    ok: short.length === 0,
+    rows: Object.values(tables).reduce((s, t) => s + t.rows, 0),
+    raw,
+    stored,
+    file: `${dir}/${FILE}`,
     tables,
-    failed,
+    short,
   };
 
   const old = await env.IMAGES.get(PREFIX + 'manifest.json');
@@ -172,12 +168,7 @@ export async function runBackup(env) {
     { httpMetadata: { contentType: 'application/json; charset=utf-8' } });
 
   report.pruned = await prune(env, dir).catch(() => 0);
-  // Name the first real reason, not just a list of tables: when every table fails the cause is
-  // the same one, and a bare list of eighteen names says nothing about what to fix.
-  if (failed.length) {
-    throw new Error(`Нөөцлөлт дутуу (${failed.length}/${TABLES.length} хүснэгт). `
-      + `${failed[0].table}: ${failed[0].error}`);
-  }
+  if (short.length) throw new Error(`Нөөцлөлт дутуу: ${short.join(', ')}`);
   return report;
 }
 
@@ -216,7 +207,8 @@ export async function backupNotice(env, report, err) {
       <td style="text-align:right;padding:3px 0">${v.rows.toLocaleString('en-US')}</td></tr>`).join('');
   await mail(env, 'Buddy Shop — сарын нөөцлөлтийн тайлан', wrap('Нөөцлөлт хэвийн ажиллаж байна', `
     <p style="font-size:15px">Сүүлийн нөөцлөлт <b>${report.date}</b>,
-       нийт <b>${report.rows.toLocaleString('en-US')}</b> мөр. Сүүлийн 30 хоног хадгалагдаж байна.</p>
+       нийт <b>${report.rows.toLocaleString('en-US')}</b> мөр
+       (${Math.round(report.stored / 1024)} КБ шахсан). Сүүлийн 30 хоног хадгалагдаж байна.</p>
     <table style="font-size:14px;border-collapse:collapse">${rows}</table>
     <p style="font-size:13px;color:#5a6b76">Файлыг компьютер дээрээ татаж авах скрипт сард нэг
        удаа ажилладаг. Хавтас хоосон байвал надад хэлээрэй.</p>`));
@@ -228,19 +220,17 @@ export async function listBackups(env) {
   return { ...JSON.parse(await m.text()), tables: TABLES };
 }
 
-// What the download script on the Mac reads: the newest backup's date on the first line, then
-// one table per line. Plain text on purpose — a shell script picking JSON apart with sed breaks
-// the first time the shape changes, and this script's whole job is to be dependable.
+// What the download script on the Mac reads: date, file and total rows, one per line. Plain
+// text on purpose — a shell script picking JSON apart with sed breaks the first time the shape
+// changes, and this script's whole job is to be dependable.
 export async function latestText(env) {
   const m = await listBackups(env);
   if (!m.latest) return 'none\n';
-  // date, then "<table>\t<rows>" — the row count lets the script prove the file it just pulled
-  // is whole instead of trusting that curl finished.
-  return [m.latest.date, ...Object.entries(m.latest.tables).map(([t, v]) => `${t}\t${v.rows}`)].join('\n') + '\n';
+  return `${m.latest.date}\n${m.latest.file}\n${m.latest.rows}\n`;
 }
 
-// Hands back one table's gzipped NDJSON. Staff-only; the caller checks the token.
-export async function getBackupFile(env, date, table) {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !TABLES.includes(table)) return null;
-  return env.IMAGES.get(`${PREFIX}${date}/${table}.ndjson.gz`);
+// Hands back a dated dump. The caller checks the token.
+export async function getBackupFile(env, date) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return null;
+  return env.IMAGES.get(`${PREFIX}${date}/${FILE}`);
 }

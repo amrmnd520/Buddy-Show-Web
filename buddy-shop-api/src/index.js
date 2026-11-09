@@ -213,13 +213,13 @@ export default {
           try { return json(await runBackup(env), 200, { 'cache-control': 'no-store' }); }
           catch (e) { return fail(500, e.message); }
         }
-        const bf = path.match(/^\/api\/backup\/(\d{4}-\d{2}-\d{2})\/([a-z_]+)$/);
+        const bf = path.match(/^\/api\/backup\/(\d{4}-\d{2}-\d{2})$/);
         if (bf && request.method === 'GET') {
-          const obj = await getBackupFile(env, bf[1], bf[2]);
+          const obj = await getBackupFile(env, bf[1]);
           if (!obj) return fail(404, 'Тийм нөөц алга');
           return new Response(obj.body, { headers: {
             'content-type': 'application/x-ndjson', 'content-encoding': 'gzip',
-            'content-disposition': `attachment; filename="${bf[1]}-${bf[2]}.ndjson.gz"`,
+            'content-disposition': `attachment; filename="buddy-${bf[1]}.ndjson.gz"`,
             'cache-control': 'no-store',
           } });
         }

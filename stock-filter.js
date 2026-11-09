@@ -5,6 +5,16 @@
    search links, suggestions and saved lists. */
 (() => {
   if (typeof render !== 'function') return;
+  // Вейдер category: the waders themselves get the sub-category «Вейдер» (boots already have «Вейдерийн Гутал»)
+  if (typeof productSubcategories === 'function') {
+    const baseSubs = productSubcategories;
+    const isWader = p => p.category === 'Вейдер' && /wader|stockingfoot|вейдер/i.test(p.name || '')
+      && !/boot|shoe|гутал|vest/i.test(p.name || '') && !/гутал/i.test(p.subcategory || '');
+    window.productSubcategories = function (p) {
+      const subs = baseSubs(p);
+      return isWader(p) && !subs.includes('Вейдер') ? ['Вейдер', ...subs] : subs;
+    };
+  }
   const KEY = 'bs_only_stock';
   const ls = (v) => { try { if (v === undefined) return localStorage.getItem(KEY); localStorage.setItem(KEY, v); } catch (e) { return null; } };
   const out = p => typeof p.erpQty === 'number' && p.erpQty <= 0;

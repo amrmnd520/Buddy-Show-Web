@@ -2,17 +2,20 @@ name = "buddy-shop-api"
 main = "src/index.js"
 compatibility_date = "2026-10-01"
 
-# Odoo ERP → prices and Emart (WH/Stock) stock, every 15 minutes
+# Buddy Shop ERP (Supabase) → prices and shop stock for the website.
+#
+# Cron is UTC and the shop is UTC+8, so 2-12 is 10:00–20:00 in Ulaanbaatar: the hours the shop
+# is open and stock actually moves. Hourly rather than every 15 minutes — the old schedule ran
+# 96 times a day and pulled all 4,107 products each time, which was most of the project's
+# Supabase egress for stock that barely changes overnight.
 [triggers]
-crons = ["*/15 * * * *", "0 22 * * *"]   # every 15 min: price/stock · daily 06:00 UB: best sellers
-
-[vars]
-# Cloudflare cannot call a bare IP address, so a hostname is used:
-# erp.buddyshop.mn = A record → 103.50.205.135 (datacom.mn DNS)
-ODOO_URL = "http://erp.buddyshop.mn:9909"
-ODOO_DB = "erpdb"
-ODOO_LOCATION_ID = "8"   # WH/Stock (Buddy / Emart)
-ODOO_COMPANY_ID = "1"    # Buddy shop
+# A Worker's subrequest budget is per invocation, so the nightly backup gets a slot of its own
+# rather than sharing one with the best-sellers job — together they would overrun it.
+crons = [
+  "0 2-12 * * *",   # 10:00–20:00 Ulaanbaatar, hourly — price / stock from the ERP
+  "0 22 * * *",     # 06:00 Ulaanbaatar — best sellers
+  "30 19 * * *",    # 03:30 Ulaanbaatar — database backup into R2
+]
 
 [[d1_databases]]
 binding = "DB"
@@ -26,8 +29,12 @@ bucket_name = "buddy-shop-images"
 # Secrets (set with `npx wrangler secret put NAME`, never written here):
 #   USERS        = {"amarmend":"password1","bat":"password2"}
 #   TOKEN_SECRET = long random string
-#   ODOO_LOGIN    = Odoo login (email)
-#   ODOO_PASSWORD = Odoo password
+#   SUPABASE_URL  = https://bufyttlmwbofvzwudsws.supabase.co
+#   SUPABASE_KEY  = Supabase service_role key (Worker only, never in the browser).
+#                   Used by erp.js (price/stock) and backup.js (the nightly copy into R2).
+#   BACKUP_TOKEN  = long random string. The only credential the monthly download script on the
+#                   owner's Mac holds, so it never keeps a staff password and this one secret can
+#                   be rotated alone if that machine is lost. Opens the /api/backup routes only.
 #   RESEND_API_KEY = Resend API key (customer sign-in codes and order emails from info@buddyshop.mn)
 #   TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID = optional: new-order alerts in Telegram
 #   ORDER_NOTIFY = optional: where new-order emails go (default info@buddyshop.mn)
@@ -35,4 +42,5 @@ bucket_name = "buddy-shop-images"
 #   STOREPAY_APP_USERNAME, STOREPAY_APP_PASSWORD, STOREPAY_USERNAME, STOREPAY_PASSWORD, STOREPAY_STORE_ID = Storepay merchant API
 #     (optional vars STOREPAY_AUTH_URL / STOREPAY_URL if Storepay gives addresses other than auth.storepay.mn / api.storepay.mn)
 # Optional vars: QPAY_URL (default https://merchant.qpay.mn; sandbox https://merchant-sandbox.qpay.mn),
-#   SITE_URL (where catalog.js is read for server-side prices; default https://amrmnd520.github.io/Buddy-Show-Web)
+#   SITE_URL (where catalog.js is read for server-side prices; default https://amrmnd520.github.io/Buddy-Show-Web),
+#   BACKUP_NOTIFY (where backup alerts go; default ORDER_NOTIFY, then info@buddyshop.mn)

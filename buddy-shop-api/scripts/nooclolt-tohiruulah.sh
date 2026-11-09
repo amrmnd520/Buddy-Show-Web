@@ -54,8 +54,12 @@ npx --yes wrangler deploy >/dev/null 2>&1 || fail "Deploy амжилтгүй.
 ok "Worker байршлаа"
 
 step "4/6  Эхний нөөцлөлтийг ажиллуулж байна (хэдэн секунд)"
-OUT=$(curl -fsS --max-time 180 -X POST -H "x-backup-token: $TOKEN" "$API/api/backup/run" 2>&1) \
-  || fail "Нөөцлөлт ажиллахгүй байна. Серверийн хариу:
+# -f биш: алдаа гарвал серверийн тайлбарыг харах ёстой, зөвхөн кодыг биш.
+BODY="$ERP/.backup-run.out"
+CODE=$(curl -sS -o "$BODY" -w '%{http_code}' --max-time 180 \
+       -X POST -H "x-backup-token: $TOKEN" "$API/api/backup/run" 2>/dev/null)
+OUT=$(cat "$BODY" 2>/dev/null); rm -f "$BODY"
+[ "$CODE" = "200" ] || fail "Нөөцлөлт ажиллахгүй байна (HTTP $CODE). Серверийн хариу:
     $OUT"
 ROWS=$(printf '%s' "$OUT" | sed -n 's/.*"rows": *\([0-9]*\).*/\1/p')
 [ -n "$ROWS" ] || ROWS="?"

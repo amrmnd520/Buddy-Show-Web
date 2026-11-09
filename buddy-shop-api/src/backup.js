@@ -58,13 +58,27 @@ async function sbPage(env, table, from, to) {
   return res.json();
 }
 
-// One table → one gzipped NDJSON object in R2. Rows are written as they arrive.
+// One table → one gzipped NDJSON object in R2.
+//
+// R2 refuses a stream whose length it does not know ("Provided readable stream must have a known
+// length"), and gzip output has no length until it is finished — so the rows are compressed as
+// they arrive but the compressed chunks are collected and stored as one sized buffer. Only the
+// compressed bytes and a single page of rows are ever held, not the whole table.
 async function dumpTable(env, table, dir) {
   const key = `${PREFIX}${dir}/${table}.ndjson.gz`;
   const { readable, writable } = new TransformStream();
-  const put = env.IMAGES.put(key, readable.pipeThrough(new CompressionStream('gzip')), {
-    httpMetadata: { contentType: 'application/x-ndjson', contentEncoding: 'gzip' },
-  });
+  const reader = readable.pipeThrough(new CompressionStream('gzip')).getReader();
+
+  // Must drain while writing: a full pipe would otherwise block the writer for ever.
+  const chunks = [];
+  let gz = 0;
+  const drain = (async () => {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      chunks.push(value); gz += value.length;
+    }
+  })();
 
   const w = writable.getWriter();
   const enc = new TextEncoder();
@@ -88,13 +102,21 @@ async function dumpTable(env, table, dir) {
     }
     await w.close();
   } catch (e) {
-    // Abort so the put rejects instead of silently storing a half table.
+    // Nothing is written to R2 on the way out, so a failed table simply leaves yesterday's
+    // object in place rather than replacing it with half of today's.
     try { await w.abort(e); } catch { /* already closed */ }
-    await put.catch(() => {});
+    await drain.catch(() => {});
     throw e;
   }
-  const obj = await put;
-  return { rows, raw, stored: (obj && obj.size) || 0 };
+  await drain;
+
+  const body = new Uint8Array(gz);
+  let at = 0;
+  for (const c of chunks) { body.set(c, at); at += c.length; }
+  await env.IMAGES.put(key, body, {
+    httpMetadata: { contentType: 'application/x-ndjson', contentEncoding: 'gzip' },
+  });
+  return { rows, raw, stored: gz };
 }
 
 // Keep the last KEEP_DAYS dated folders; drop the rest.
@@ -150,7 +172,12 @@ export async function runBackup(env) {
     { httpMetadata: { contentType: 'application/json; charset=utf-8' } });
 
   report.pruned = await prune(env, dir).catch(() => 0);
-  if (failed.length) throw new Error(`Нөөцлөлт дутуу: ${failed.map((f) => f.table).join(', ')}`);
+  // Name the first real reason, not just a list of tables: when every table fails the cause is
+  // the same one, and a bare list of eighteen names says nothing about what to fix.
+  if (failed.length) {
+    throw new Error(`Нөөцлөлт дутуу (${failed.length}/${TABLES.length} хүснэгт). `
+      + `${failed[0].table}: ${failed[0].error}`);
+  }
   return report;
 }
 

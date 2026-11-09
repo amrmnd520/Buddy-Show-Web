@@ -4,7 +4,13 @@ compatibility_date = "2026-10-01"
 
 # Odoo ERP → prices and Emart (WH/Stock) stock, every 15 minutes
 [triggers]
-crons = ["*/15 * * * *", "0 22 * * *"]   # every 15 min: price/stock · daily 06:00 UB: best sellers
+# A Worker's subrequest budget is per invocation, so the nightly backup gets a slot of its own
+# rather than sharing one with the best-sellers job — together they would overrun it.
+crons = [
+  "*/15 * * * *",   # price / stock from the ERP
+  "0 22 * * *",     # 06:00 Ulaanbaatar — best sellers
+  "30 19 * * *",    # 03:30 Ulaanbaatar — database backup into R2
+]
 
 [vars]
 # Cloudflare cannot call a bare IP address, so a hostname is used:
@@ -28,6 +34,9 @@ bucket_name = "buddy-shop-images"
 #   TOKEN_SECRET = long random string
 #   ODOO_LOGIN    = Odoo login (email)
 #   ODOO_PASSWORD = Odoo password
+#   SUPABASE_URL   = https://<project>.supabase.co   (the ERP database erp.js reads)
+#   SUPABASE_KEY   = service_role key — stays on the Worker, never in a browser.
+#                    Used by erp.js (price/stock) and backup.js (the nightly copy into R2).
 #   RESEND_API_KEY = Resend API key (customer sign-in codes and order emails from info@buddyshop.mn)
 #   TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID = optional: new-order alerts in Telegram
 #   ORDER_NOTIFY = optional: where new-order emails go (default info@buddyshop.mn)

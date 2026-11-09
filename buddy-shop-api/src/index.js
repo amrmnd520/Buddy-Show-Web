@@ -8,6 +8,7 @@ import * as tg from './telegram.js';
 import * as qpay from './qpay.js';
 import { createOrder, listOrders, updateOrder, qpayCallback, payStatus, staffCheck } from './orders.js';
 import { customerId, requestCode, verifyCode, passwordLogin, getAccount, updateAccount, deleteAccount, listCustomers, pruneCodes } from './customers.js';
+import { runBackup, listBackups, getBackupFile } from './backup.js';
 
 const JSON_HEADERS = { 'content-type': 'application/json; charset=utf-8' };
 const CORS = {
@@ -202,6 +203,27 @@ export default {
           if (request.method === 'POST' && path === '/api/telegram/test') return json(await tg.test(env));
         } catch (e) { return fail(400, e.message); }
       }
+      // ---- database backups (staff only: these files hold cost and customer details) ----
+      if (path === '/api/backup' && request.method === 'GET') {
+        const b = await listBackups(env);
+        const e = await env.IMAGES.get('backup/error.json');
+        return json({ ...b, lastError: e ? JSON.parse(await e.text()) : null }, 200, { 'cache-control': 'no-store' });
+      }
+      if (path === '/api/backup/run' && request.method === 'POST') {
+        try { return json(await runBackup(env), 200, { 'cache-control': 'no-store' }); }
+        catch (e) { return fail(500, e.message); }
+      }
+      const bf = path.match(/^\/api\/backup\/(\d{4}-\d{2}-\d{2})\/([a-z_]+)$/);
+      if (bf && request.method === 'GET') {
+        const obj = await getBackupFile(env, bf[1], bf[2]);
+        if (!obj) return fail(404, 'Тийм нөөц алга');
+        return new Response(obj.body, { headers: {
+          'content-type': 'application/x-ndjson', 'content-encoding': 'gzip',
+          'content-disposition': `attachment; filename="${bf[1]}-${bf[2]}.ndjson.gz"`,
+          'cache-control': 'no-store',
+        } });
+      }
+
       if (request.method === 'GET' && path === '/api/orders') return json(await listOrders(env, url), 200, { 'cache-control': 'no-store' });
       const qc = path.match(/^\/api\/orders\/(\d+)\/qpay-check$/);
       if (qc && request.method === 'POST') { const r = await staffCheck(env, Number(qc[1])); return json(r[1], r[0]); }
@@ -249,12 +271,27 @@ export default {
       ctx.waitUntil(pruneCodes(env).catch((e) => console.error('prune codes', e)));
       return;
     }
+    // 03:30 Ulaanbaatar, in an invocation of its own: Supabase's free plan backs up nothing,
+    // so this is the only copy of the shop's history.
+    if (event.cron === '30 19 * * *') {
+      ctx.waitUntil(runBackup(env).then(
+        async (r) => { console.log('backup', r.date, r.rows, 'rows', r.ms + 'ms'); await env.IMAGES.delete('backup/error.json'); },
+        (e) => saveBackupError(env, e),
+      ));
+      return;
+    }
     ctx.waitUntil(syncErp(env).then(
       async (r) => { console.log('erp sync', r); await env.IMAGES.delete('erp/error.json'); },
       (e) => saveErpError(env, e),
     ));
   },
 };
+
+async function saveBackupError(env, e) {
+  console.error('backup failed', e);
+  await env.IMAGES.put('backup/error.json', JSON.stringify({ at: new Date().toISOString(), error: String((e && e.message) || e) }),
+    { httpMetadata: { contentType: 'application/json' } }).catch(() => {});
+}
 
 async function saveErpError(env, e) {
   console.error('erp sync failed', e);

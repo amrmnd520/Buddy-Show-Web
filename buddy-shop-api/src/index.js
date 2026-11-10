@@ -7,7 +7,7 @@ import { track, stats, prune } from './stats.js';
 import * as tg from './telegram.js';
 import * as qpay from './qpay.js';
 import * as storepay from './storepay.js';
-import { createOrder, listOrders, updateOrder, qpayCallback, storepayCallback, payStatus, staffCheck } from './orders.js';
+import { createOrder, listOrders, updateOrder, qpayCallback, storepayCallback, payStatus, staffCheck, customerCancel } from './orders.js';
 import { customerId, requestCode, verifyCode, passwordLogin, getAccount, updateAccount, deleteAccount, listCustomers, pruneCodes } from './customers.js';
 import { runBackup, listBackups, getBackupFile, backupNotice, latestText } from './backup.js';
 
@@ -170,6 +170,11 @@ export default {
       const pm = path.match(/^\/api\/orders\/(\d+)\/pay$/);
       if (pm && request.method === 'GET') {
         const r = await payStatus(env, Number(pm[1]), url.searchParams.get('k'), url.searchParams.get('check') === '1');
+        return json(r[1], r[0], { 'cache-control': 'no-store' });
+      }
+      const cm = path.match(/^\/api\/orders\/(\d+)\/cancel$/);
+      if (cm && request.method === 'POST') {
+        const r = await customerCancel(env, Number(cm[1]), url.searchParams.get('k'));
         return json(r[1], r[0], { 'cache-control': 'no-store' });
       }
       // ---- orders from the website cart (signed-in customer optional) ----

@@ -12,6 +12,9 @@
   const acc = () => window.BuddyAccount;
   let view = 'cart', busy = false, err = '', done = null, form = null; // form: last typed values
   const BNPL = { storepay: { name: 'Storepay', icon: '🟣' }, pocket: { name: 'Pocket', icon: '🟢' } };
+  const payNav = () => `<button class="co-back" data-co="paychange" ${paying && paying.cancelling ? 'disabled' : ''}>← Төлбөрийн арга солих</button>`;
+  const payCancel = () => `<button type="button" class="co-link" data-co="paycancel" ${paying && paying.cancelling ? 'disabled' : ''}>${paying && paying.cancelling ? 'Цуцалж байна…' : 'Захиалга цуцлах'}</button>
+        <p class="co-sum">Цонхыг хаавал захиалга хадгалагдана — сагсаа нээгээд дараа нь төлж болно.</p>`;
   const goLabel = (m, sum) => m === 'qpay' && payOn ? `Захиалаад QPay-ээр төлөх · ${sum}` : BNPL[m] ? `${BNPL[m].name}-ээр захиалах · ${sum}` : `Захиалга илгээх · ${sum}`;
   // spOn: Storepay credentials are set on the server, so the loan request reaches the customer's
   // app by itself. Without them the choice still works — it just becomes an order staff handle by
@@ -48,6 +51,8 @@
 .co-which input{width:auto;margin-top:3px}.co-which span{display:flex;flex-direction:column;gap:2px}.co-which small{color:#5a6a72;font-size:13px;line-height:1.4}
 .co-which label:has(input:checked){border-color:var(--orange,#d77a35);background:#fff7f0}
 .co-pay{text-align:center;display:flex;flex-direction:column}
+.co-link{background:none;border:0;color:#b42318;font:inherit;font-weight:600;text-decoration:underline;cursor:pointer;padding:8px;margin-top:4px}.co-link:disabled{opacity:.5;cursor:default}
+.co-pend{background:#fff4e5;border:1px solid #f3d3a8;border-radius:8px;padding:12px;margin:0 0 12px;font-size:14px;display:grid;gap:8px}.co-pend-b{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.co-pend .co-go{width:auto;flex:1;margin:0}
 .co-steps{text-align:left;margin:10px 0;padding-left:22px;line-height:1.6;font-size:14px}.co-sp-app{display:block;margin:4px 0 10px;padding:10px;border-radius:8px;background:#5b2bd6;color:#fff;font-weight:700;text-decoration:none}
 @media(max-width:700px),(pointer:coarse){.co-pay .co-banks{order:-1;margin-top:4px}.co-pay h3{order:-3}.co-pay .co-sum:first-of-type{order:-2}.co-pay .co-qr{width:150px}.co-pay .phone-hint{display:block!important}.co-pay .desk-hint{display:none}}.co-pay h3{margin:0 0 4px}.co-pay .amt{font-size:18px}
 .co-qr{width:230px;max-width:80%;aspect-ratio:1;image-rendering:pixelated;border:1px solid #e3e7e9;border-radius:8px;padding:8px;background:#fff;margin:10px auto;display:block}
@@ -92,7 +97,7 @@
     if (tot) tot.style.display = showCartRows ? '' : 'none';
     if (view === 'pay' && paying && paying.sp) {
       const o = paying.order;
-      area.innerHTML = `<div class="co-pay"><h3>🟣 Storepay-ээр төлөх</h3>
+      area.innerHTML = `${payNav()}<div class="co-pay"><h3>🟣 Storepay-ээр төлөх</h3>
         <p class="co-sum">Захиалга <b>${esc(o.number)}</b> · Дүн <b class="amt">${fmt(o.total)}</b></p>
         <ol class="co-steps"><li><b>${esc(paying.sp.phone)}</b> дугаартай <b>Storepay</b> апп-аа нээнэ үү.</li>
           <li>Buddy Shop-ийн <b>${fmt(o.total)}</b>-ийн худалдан авалтын хүсэлтийг <b>баталгаажуулна</b> уу.</li>
@@ -101,12 +106,12 @@
         <div class="co-wait"><span class="dot"></span> Storepay-ийн баталгаажуулалтыг хүлээж байна…</div>
         ${paying.msg ? `<div class="co-err">${esc(paying.msg)}</div>` : ''}
         <button class="co-go" data-co="paycheck" ${paying.checking ? 'disabled' : ''}>${paying.checking ? 'Шалгаж байна…' : 'Баталгаажуулсан — шалгах'}</button>
-        <p class="co-sum">Захиалга тань хадгалагдсан. Асуудал гарвал манай ажилтан холбогдоно.</p></div>`;
+        ${payCancel()}</div>`;
       return;
     }
     if (view === 'pay' && paying) {
       const o = paying.order, q = paying.q;
-      area.innerHTML = `<div class="co-pay"><h3>QPay-ээр төлөх</h3>
+      area.innerHTML = `${payNav()}<div class="co-pay"><h3>QPay-ээр төлөх</h3>
         <p class="co-sum">Захиалга <b>${esc(o.number)}</b> · Төлөх дүн <b class="amt">${fmt(o.total)}</b></p>
         ${q.qr ? `<img class="co-qr" src="${esc(q.qr)}" alt="QPay QR код">` : ''}
         <p class="co-sum desk-hint">Банкны апп-аараа QR кодыг уншуулна уу.${q.banks.length ? ' Утсаараа бол доорх банкаа сонгоно уу:' : ''}</p>
@@ -116,7 +121,7 @@
         <div class="co-wait"><span class="dot"></span> Төлбөр хүлээж байна… төлсний дараа энэ хэсэг автоматаар шинэчлэгдэнэ.</div>
         ${paying.msg ? `<div class="co-err">${esc(paying.msg)}</div>` : ''}
         <button class="co-go" data-co="paycheck" ${paying.checking ? 'disabled' : ''}>${paying.checking ? 'Шалгаж байна…' : 'Төлбөрөө төлсөн — шалгах'}</button>
-        <p class="co-sum">Дараа төлөх бол энэ цонхыг хааж болно — захиалга тань хадгалагдсан, манай ажилтан холбогдоно.</p></div>`;
+        ${payCancel()}</div>`;
       return;
     }
     if (view === 'done' && done) {
@@ -132,9 +137,12 @@
         <button class="co-go" data-co="close">Дэлгүүр үргэлжлүүлэх</button></div>`;
       return;
     }
-    if (!l.length) { area.innerHTML = ''; view = 'cart'; return; }
+    const pend = paying ? `<div class="co-pend"><div><b>${esc(paying.order.number)}</b> · ${fmt(paying.order.total)} — ${paying.sp ? 'Storepay баталгаажуулалт' : 'төлбөр'} хүлээгдэж байна</div>
+      <div class="co-pend-b"><button type="button" class="co-go" data-co="payopen">Төлөх →</button><button type="button" class="co-link" data-co="paycancel" ${paying.cancelling ? 'disabled' : ''}>${paying.cancelling ? 'Цуцалж байна…' : 'Захиалга цуцлах'}</button></div>
+      ${paying.msg ? `<div class="co-err">${esc(paying.msg)}</div>` : ''}</div>` : '';
+    if (!l.length) { area.innerHTML = pend; view = 'cart'; return; }
     if (view === 'cart') {
-      area.innerHTML = `<button class="co-go" data-co="checkout">Захиалга өгөх →</button>
+      area.innerHTML = `${pend}<button class="co-go" data-co="checkout">Захиалга өгөх →</button>
         <p class="co-sum">${payOn ? 'QPay-ээр шууд, эсвэл Storepay, Pocket-оор хуваан төлөх боломжтой.' : 'Storepay эсвэл Pocket-оор хуваан төлөх боломжтой.'}</p>`;
       return;
     }
@@ -203,6 +211,9 @@
     else if (a === 'login') { form = read(); acc() && acc().open('Нэвтэрсний дараа сагс руугаа буцаж захиалгаа үргэлжлүүлнэ үү.'); }
     else if (a === 'close') { view = 'cart'; done = null; typeof hideCart === 'function' && hideCart(); }
     else if (a === 'paycheck') pollPay(true);
+    else if (a === 'payopen') { view = 'pay'; paint(); }
+    else if (a === 'paychange') cancelPay(true);
+    else if (a === 'paycancel') cancelPay(false);
   });
   area.addEventListener('change', e => {
     if (e.target.name === 'co-pay') { const b = area.querySelector('.co-go:not([data-co])'); if (b) b.textContent = goLabel(e.target.value, fmt(total(lines()))); }
@@ -228,8 +239,9 @@
       const d = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(d.error || ('Алдаа ' + res.status));
       form = null;
-      if (d.qpay) { paying = { order: d.order, key: d.payKey, q: d.qpay }; view = 'pay'; startPolling(); }
-      else if (d.storepay) { paying = { order: d.order, key: d.payKey, sp: d.storepay }; view = 'pay'; startPolling(); }
+      const keep = { backup: cart.map(x => ({ ...x })), form: v };
+      if (d.qpay) { paying = { order: d.order, key: d.payKey, q: d.qpay, ...keep }; view = 'pay'; startPolling(); }
+      else if (d.storepay) { paying = { order: d.order, key: d.payKey, sp: d.storepay, ...keep }; view = 'pay'; startPolling(); }
       else { done = d.order; view = 'done'; }
       cart.length = 0; const c = document.getElementById('count'); if (c) c.textContent = '0';
       const a = acc() && acc().get();
@@ -246,6 +258,24 @@
 
   // QPay: our server is told by QPay's callback; the page only asks our server (every 4 s, for 20 min).
   // «Төлбөрөө төлсөн — шалгах» asks QPay once (the server allows that at most every 10 s).
+  // cancel the unpaid order and put its items back in the cart (toForm: straight back to the order form)
+  async function cancelPay(toForm) {
+    if (!paying || paying.cancelling) return;
+    paying.cancelling = true; paying.msg = ''; paint();
+    try {
+      const r = await fetch(`${API}/api/orders/${paying.order.id}/cancel?k=${encodeURIComponent(paying.key)}`, { method: 'POST', cache: 'no-store' });
+      const d = await r.json().catch(() => ({}));
+      if (d.paid) { paying.cancelling = false; await pollPay(false); return; }
+      if (!r.ok) throw new Error(d.error || ('Алдаа ' + r.status));
+      clearInterval(pollTimer);
+      const p = paying; paying = null;
+      if (!cart.length) p.backup.forEach(x => cart.push(x));
+      const c = document.getElementById('count'); if (c) c.textContent = String(cart.length);
+      try { typeof showCart === 'function' && document.getElementById('overlay')?.classList.contains('show') && showCart(); } catch (e) {}
+      form = p.form || null; view = toForm ? 'form' : 'cart'; err = '';
+    } catch (e) { if (paying) { paying.cancelling = false; paying.msg = e.message || 'Цуцалж чадсангүй, дахин оролдоно уу.'; } }
+    paint();
+  }
   function startPolling() {
     clearInterval(pollTimer);
     const until = Date.now() + 20 * 60e3;
@@ -274,7 +304,7 @@
   // repaint whenever the cart opens or changes
   if (typeof window.showCart === 'function') {
     const prev = window.showCart;
-    window.showCart = function (...a) { const out = prev.apply(this, a); if (view === 'done') view = 'cart', done = null; if (view === 'pay' && cart.length) { view = 'cart'; } try { paint(); } catch (e) {} return out; };
+    window.showCart = function (...a) { const out = prev.apply(this, a); if (view === 'done') view = 'cart', done = null; if (view === 'pay') { view = 'cart'; } try { paint(); } catch (e) {} return out; };
   }
   // «Сагсанд нэмэх» on the product page: go straight to the cart (the product window closes).
   // Products with colour options stay open (several colours are often added) and show «Сагс руу очих».

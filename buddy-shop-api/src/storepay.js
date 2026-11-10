@@ -1,13 +1,16 @@
 // Storepay (buy now, pay later): a loan request to the customer's phone; the customer confirms it in the Storepay app.
+// Written against "Стор пэй мерчант системийн API гарын авлага", version 3.0.
+//
 // Secrets (npx wrangler secret put), from the Storepay merchant contract:
-//   STOREPAY_APP_USERNAME, STOREPAY_APP_PASSWORD  — OAuth user
-//   STOREPAY_USERNAME, STOREPAY_PASSWORD          — Basic auth (client id / secret)
+//   STOREPAY_APP_USERNAME, STOREPAY_APP_PASSWORD  — the API user, sent as HTTP Basic
+//   STOREPAY_USERNAME, STOREPAY_PASSWORD          — the system user, sent as query parameters
 //   STOREPAY_STORE_ID                             — merchant store id
 // Optional vars (if Storepay gives other addresses): STOREPAY_AUTH_URL, STOREPAY_URL
 // A loan is never trusted from the callback alone: it is always confirmed with /merchant/loan/check.
 
-const authUrl = (env) => String(env.STOREPAY_AUTH_URL || 'https://auth.storepay.mn').replace(/\/+$/, '');
-const apiUrl = (env) => String(env.STOREPAY_URL || 'https://api.storepay.mn').replace(/\/+$/, '');
+// The manual puts the token service on merchant-uaa and everything else on lend-merchant.
+const authUrl = (env) => String(env.STOREPAY_AUTH_URL || 'https://service.storepay.mn/merchant-uaa').replace(/\/+$/, '');
+const apiUrl = (env) => String(env.STOREPAY_URL || 'https://service.storepay.mn/lend-merchant').replace(/\/+$/, '');
 let tok = null; // { token, until }
 
 export const enabled = (env) => !!(env.STOREPAY_APP_USERNAME && env.STOREPAY_APP_PASSWORD && env.STOREPAY_USERNAME
@@ -15,13 +18,19 @@ export const enabled = (env) => !!(env.STOREPAY_APP_USERNAME && env.STOREPAY_APP
 
 const basic = (s) => btoa(String.fromCharCode(...new TextEncoder().encode(s)));
 const t = (v) => String(v || '').trim();
-const msgOf = (d) => (d && Array.isArray(d.msgList) && d.msgList[0] && d.msgList[0].text) || (d && (d.message || d.error_description || d.error || d.status)) || '';
+// A rejection comes back as msgList:[{code, text, params}] — and in the manual's own example the
+// sentence the customer needs is in `code` while `text` is null, so try both.
+const msgOf = (d) => {
+  const m = d && Array.isArray(d.msgList) && d.msgList[0];
+  return (m && (m.text || m.code)) || (d && (d.message || d.error_description || d.error || d.status)) || '';
+};
 
 async function token(env) {
   if (tok && Date.now() < tok.until) return tok.token;
-  const q = new URLSearchParams({ grant_type: 'password', username: t(env.STOREPAY_APP_USERNAME), password: t(env.STOREPAY_APP_PASSWORD) });
+  // Manual: the system user goes in the query string, the API user in Basic.
+  const q = new URLSearchParams({ grant_type: 'password', username: t(env.STOREPAY_USERNAME), password: t(env.STOREPAY_PASSWORD) });
   const res = await fetch(`${authUrl(env)}/oauth/token?${q}`, {
-    method: 'POST', headers: { authorization: 'Basic ' + basic(`${t(env.STOREPAY_USERNAME)}:${t(env.STOREPAY_PASSWORD)}`) },
+    method: 'POST', headers: { authorization: 'Basic ' + basic(`${t(env.STOREPAY_APP_USERNAME)}:${t(env.STOREPAY_APP_PASSWORD)}`) },
   });
   const d = await res.json().catch(() => ({}));
   if (!res.ok || !d.access_token) throw new Error('Storepay нэвтрэлт амжилтгүй (' + (msgOf(d) || res.status) + ')');
@@ -56,7 +65,11 @@ export async function possibleAmount(env, phone) {
 export async function createLoan(env, { number, amount, phone, callback }) {
   const id = await call(env, '/merchant/loan', {
     storeId: t(env.STOREPAY_STORE_ID), mobileNumber: mobile(phone), description: `Buddy Shop ${number}`,
-    amount: Number(amount).toFixed(2), callbackUrl: callback,
+    // Whole tögrög, as in the manual's example ("100000"). Sending "7900.00" invents a precision
+    // the currency does not have and that the examples never show.
+    amount: String(Math.round(Number(amount) || 0)),
+    callbackUrl: callback,
+    requestId: String(number),   // optional, but it is how Storepay lets you re-check a request later
   });
   if (id === undefined || id === null || id === '') throw new Error('Storepay: зээлийн дугаар ирсэнгүй');
   return String(id);

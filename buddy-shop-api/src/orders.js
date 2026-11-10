@@ -294,7 +294,14 @@ export async function qpayCallback(env, url) {
 
 // Storepay calls this when the customer confirms (or the loan changes); confirmed again with loan/check.
 export async function storepayCallback(env, url) {
-  const row = await rowByKey(env, Number(url.searchParams.get('o')), url.searchParams.get('k'));
+  // Storepay calls the merchant URL with the loan number in an `id` parameter. Our URL already
+  // carries ?o=&k=, and the manual's example has none — so if Storepay replaces the query string
+  // instead of appending to it, those are gone. The loan id alone is enough to find the order.
+  let row = await rowByKey(env, Number(url.searchParams.get('o')), url.searchParams.get('k'));
+  const loan = String(url.searchParams.get('id') || '').trim();
+  if (!row && loan) {
+    row = await env.DB.prepare('SELECT * FROM orders WHERE sp_loan = ?1').bind(loan).first();
+  }
   if (row) { try { await checkRow(env, row, true); } catch (e) { console.error('storepay callback', e.message); } }
   return new Response(JSON.stringify({ status: 'Success' }), { status: 200, headers: { 'content-type': 'application/json' } });
 }

@@ -231,6 +231,13 @@ export default {
       const user = await whoIs(request, env);
       if (!user) return fail(401, 'Дахин нэвтэрнэ үү');
       if (request.method === 'GET' && path === '/api/me') return json({ user });
+      // Are the Storepay secrets not just present but correct? Logs in and nothing else: no loan
+      // is created, so this is safe to run as often as you like.
+      if (request.method === 'GET' && path === '/api/storepay/ping') {
+        if (!storepay.enabled(env)) return json({ ok: false, error: 'Storepay түлхүүр тавиагүй байна' }, 200, { 'cache-control': 'no-store' });
+        try { await storepay.ping(env); return json({ ok: true }, 200, { 'cache-control': 'no-store' }); }
+        catch (e) { return json({ ok: false, error: e.message }, 200, { 'cache-control': 'no-store' }); }
+      }
       if (request.method === 'POST' && path === '/api/upload') return uploadImage(request, env, url, user);
       if (path.startsWith('/api/telegram')) {
         try {

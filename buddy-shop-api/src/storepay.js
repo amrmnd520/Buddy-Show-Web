@@ -54,6 +54,16 @@ async function call(env, path, body) {
 
 const mobile = (phone) => String(phone || '').replace(/\D/g, '').slice(-8);
 
+// Credentials check that costs nothing and creates nothing: just the OAuth step. It proves the
+// token address and both credential pairs are right — the part most easily got wrong, since the
+// manual puts the system user in the query string and the API user in Basic. Throws the real
+// Storepay error so a wrong secret says so instead of surfacing on a customer's first order.
+export async function ping(env) {
+  tok = null;                       // never let a cached token hide a bad secret
+  await token(env);
+  return true;
+}
+
 // how much this customer can borrow right now (₮); null if Storepay does not say
 export async function possibleAmount(env, phone) {
   const v = await call(env, '/user/possibleAmount', { mobileNumber: mobile(phone) });

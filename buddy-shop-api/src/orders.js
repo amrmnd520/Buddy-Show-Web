@@ -138,15 +138,16 @@ export async function createOrder(request, env, customerId) {
   const loanPhone = spPhone.replace(/\D/g, '').length >= 8 ? spPhone : phone;
   if (paySP) {
     if (spPhone && spPhone.replace(/\D/g, '').length < 8) return [400, { error: 'Storepay-д бүртгэлтэй утасны дугаараа зөв оруулна уу' }];
-    // tell the customer now if their Storepay limit is not enough, so they can pick another way
+    // Tell the customer early if their Storepay limit is too small — but only on a positive
+    // answer. /user/possibleAmount is not in the merchant manual, and it answered 0 for a number
+    // that does have credit, so a zero here means «no answer», not «no credit». Blocking on it
+    // turned real customers away. Anything other than a positive shortfall goes through and lets
+    // the loan request itself be the judge: that reply is authoritative and reaches the customer.
     let limit = null;
     try { limit = await storepay.possibleAmount(env, loanPhone); } catch (e) { console.error('storepay limit', e.message); }
-    // A zero limit on the order's own phone usually means that number simply has no Storepay
-    // account, which is a different problem from a limit that is too small — say so, or the
-    // customer re-reads the same number and gives up.
-    if (limit !== null && limit < total) return [400, { error: limit === 0
-      ? `${loanPhone} дугаарт Storepay-ийн боломжит эрх алга байна. Storepay-д бүртгэлтэй дугаараа доор оруулна уу, эсвэл QPay / Pocket сонгоно уу.`
-      : `Таны Storepay-ийн боломжит эрх ${money(limit)} — ${money(total)}-д хүрэлцэхгүй байна. QPay эсвэл Pocket сонгоно уу.` }];
+    if (limit !== null && limit > 0 && limit < total) {
+      return [400, { error: `Таны Storepay-ийн боломжит эрх ${money(limit)} — ${money(total)}-д хүрэлцэхгүй байна. QPay эсвэл Pocket сонгоно уу.` }];
+    }
   }
 
   const r = await env.DB.prepare(`INSERT INTO orders (customer_id, created_at, updated_at, status, total, items, note, name, phone, email, address, addr, delivery, pay_method, pay_key, price_check, sp_phone)

@@ -12,6 +12,10 @@
   const acc = () => window.BuddyAccount;
   let view = 'cart', busy = false, err = '', done = null, form = null; // form: last typed values
   const BNPL = { storepay: { name: 'Storepay', icon: '🟣' }, pocket: { name: 'Pocket', icon: '🟢' } };
+  // Storepay terms of use 3.1.1: one purchase is 100,000₮–10,000,000₮. Say so on the basket the
+  // customer has rather than letting them choose Storepay and be refused after ordering.
+  const SP_MIN = 100000, SP_MAX = 10000000;
+  const spFits = (sum) => sum >= SP_MIN && sum <= SP_MAX;
   const payNav = () => `<button class="co-back" data-co="paychange" ${paying && paying.cancelling ? 'disabled' : ''}>← Төлбөрийн арга солих</button>`;
   const payCancel = () => `<button type="button" class="co-link" data-co="paycancel" ${paying && paying.cancelling ? 'disabled' : ''}>${paying && paying.cancelling ? 'Цуцалж байна…' : 'Захиалга цуцлах'}</button>
         <p class="co-sum">Цонхыг хаавал захиалга хадгалагдана — сагсаа нээгээд дараа нь төлж болно.</p>`;
@@ -50,6 +54,7 @@
 .co-which label{margin:0;border:1px solid #cfd6da;border-radius:6px;padding:10px;cursor:pointer;display:flex;gap:10px;align-items:flex-start;font-weight:400}
 .co-which input{width:auto;margin-top:3px}.co-which span{display:flex;flex-direction:column;gap:2px}.co-which small{color:#5a6a72;font-size:13px;line-height:1.4}
 .co-which label:has(input:checked){border-color:var(--orange,#d77a35);background:#fff7f0}
+.co-which label:has(input:disabled){opacity:.55;cursor:default;background:#f6f7f8}.co-which label:has(input:disabled) small{color:#8a5a2b}
 .co-pay{text-align:center;display:flex;flex-direction:column}
 .co-link{background:none;border:0;color:#b42318;font:inherit;font-weight:600;text-decoration:underline;cursor:pointer;padding:8px;margin-top:4px}.co-link:disabled{opacity:.5;cursor:default}
 .co-pend{background:#fff4e5;border:1px solid #f3d3a8;border-radius:8px;padding:12px;margin:0 0 12px;font-size:14px;display:grid;gap:8px}.co-pend-b{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.co-pend .co-go{width:auto;flex:1;margin:0}
@@ -143,14 +148,16 @@
     if (!l.length) { area.innerHTML = pend; view = 'cart'; return; }
     if (view === 'cart') {
       area.innerHTML = `${pend}<button class="co-go" data-co="checkout">Захиалга өгөх →</button>
-        <p class="co-sum">${payOn ? 'QPay-ээр шууд, эсвэл Storepay, Pocket-оор хуваан төлөх боломжтой.' : 'Storepay эсвэл Pocket-оор хуваан төлөх боломжтой.'}</p>`;
+        <p class="co-sum">${payOn ? `QPay-ээр шууд, эсвэл ${spFits(total(l)) ? 'Storepay, Pocket' : 'Pocket'}-оор хуваан төлөх боломжтой.` : `${spFits(total(l)) ? 'Storepay эсвэл Pocket' : 'Pocket'}-оор хуваан төлөх боломжтой.`}</p>`;
       return;
     }
     // checkout form
     const f = form || {
       name: a ? a.name : '', phone: a ? a.phone : '', email: a ? a.email : '', delivery: 'delivery', note: '', save: false, pay: 'qpay', spPhone: '',
     };
-    const pm = (f.pay === 'qpay' && payOn) || BNPL[f.pay] ? f.pay : (payOn ? 'qpay' : 'storepay');
+    const spOk = spFits(total(l));
+    let pm = (f.pay === 'qpay' && payOn) || BNPL[f.pay] ? f.pay : (payOn ? 'qpay' : 'storepay');
+    if (pm === 'storepay' && !spOk) pm = payOn ? 'qpay' : 'pocket';
     const saved = savedAddr(a);
     const which = saved ? ((form && form.which) || 'saved') : 'new';
     const newSrc = { addr: form && form.which === 'new' && form.addr ? form.addr : (saved ? {} : ((a && a.addr) || {})) };
@@ -175,7 +182,9 @@
         <label for="co-note">Захиалгын тайлбар</label><textarea id="co-note" maxlength="500" placeholder="Хүргэлтийн цаг, бусад хүсэлт">${esc(f.note)}</textarea>
         <div class="co-sec">Төлбөр</div>
         <div class="co-which">${payOn ? `<label><input type="radio" name="co-pay" value="qpay" ${pm === 'qpay' ? 'checked' : ''}><span><b>💳 QPay-ээр одоо төлөх</b><small>QR код эсвэл банкны апп-аар шууд</small></span></label>` : ''}
-          <label><input type="radio" name="co-pay" value="storepay" ${pm === 'storepay' ? 'checked' : ''}><span><b>🟣 Storepay — хуваан төлөх</b><small>${spOn ? 'Storepay апп руу тань хүсэлт шууд очно — зөвшөөрөхөд л болно' : 'Ажилтан таны утас руу Storepay нэхэмжлэх илгээнэ'}</small></span></label>
+          <label><input type="radio" name="co-pay" value="storepay" ${pm === 'storepay' ? 'checked' : ''} ${spOk ? '' : 'disabled'}><span><b>🟣 Storepay — хуваан төлөх</b><small>${!spOk
+            ? (total(l) < SP_MIN ? `Storepay ${fmt(SP_MIN)}-с дээш захиалгад л боломжтой — одоогоор ${fmt(total(l))}` : `Storepay ${fmt(SP_MAX)}-с дээш захиалга авдаггүй`)
+            : spOn ? 'Storepay апп руу тань хүсэлт шууд очно — зөвшөөрөхөд л болно' : 'Ажилтан таны утас руу Storepay нэхэмжлэх илгээнэ'}</small></span></label>
           <label><input type="radio" name="co-pay" value="pocket" ${pm === 'pocket' ? 'checked' : ''}><span><b>🟢 Pocket — хуваан төлөх</b><small>Ажилтан таны утас руу Pocket нэхэмжлэх илгээнэ</small></span></label></div>
         <div id="co-sp" style="${pm === 'storepay' && spOn ? '' : 'display:none'}">
           <label for="co-spphone">Storepay-д бүртгэлтэй утас <small style="font-weight:400;color:#5a6a72">(өөр дугаар бол)</small></label>
@@ -195,7 +204,7 @@
     return {
       name: g('co-name').trim(), phone: g('co-phone').trim(), email: g('co-email').trim(), note: g('co-note').trim(), spPhone: g('co-spphone').trim(),
       delivery: way ? way.value : 'delivery', which, save: !!area.querySelector('#co-save')?.checked,
-      pay: (area.querySelector('input[name="co-pay"]:checked') || {}).value || (payOn ? 'qpay' : 'storepay'),
+      pay: (area.querySelector('input[name="co-pay"]:checked') || {}).value || (payOn ? 'qpay' : (spFits(total(lines())) ? 'storepay' : 'pocket')),
       addr: which === 'saved' ? { ...a.addr } : (acc() && area.querySelector('#co-new') ? acc().readAddr(area.querySelector('#co-new')) : {}),
     };
   }
@@ -242,7 +251,7 @@
       const headers = { 'content-type': 'application/json' };
       const t = acc() && acc().token(); if (t) headers.authorization = 'Bearer ' + t;
       const res = await fetch(API + '/api/orders', { method: 'POST', headers, body: JSON.stringify({
-        items: l, name: v.name, phone: v.phone, email: v.email, delivery: v.delivery, address, addr: v.delivery === 'pickup' ? null : v.addr, note: v.note, spPhone: v.spPhone, pay: v.pay === 'qpay' && !payOn ? 'storepay' : v.pay }) });
+        items: l, name: v.name, phone: v.phone, email: v.email, delivery: v.delivery, address, addr: v.delivery === 'pickup' ? null : v.addr, note: v.note, spPhone: v.spPhone, pay: v.pay === 'qpay' && !payOn ? (spFits(total(l)) ? 'storepay' : 'pocket') : v.pay }) });
       const d = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(d.error || ('Алдаа ' + res.status));
       form = null;

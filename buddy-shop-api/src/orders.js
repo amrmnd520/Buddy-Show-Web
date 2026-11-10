@@ -135,6 +135,14 @@ export async function createOrder(request, env, customerId) {
   const method = payQ ? 'qpay' : (BNPL[b.pay] ? b.pay : 'later');
   const payKey = crypto.randomUUID().replace(/-/g, '');
   const paySP = method === 'storepay' && storepay.enabled(env) && total > 0;
+  // Storepay's own terms of use, 3.1.1: one purchase is between 100,000₮ and 10,000,000₮.
+  // Outside that Storepay refuses the loan, so the order must not be taken as a Storepay order.
+  const spMin = Number(env.STOREPAY_MIN) || 100000, spMax = Number(env.STOREPAY_MAX) || 10000000;
+  if (paySP && (total < spMin || total > spMax)) {
+    return [400, { error: total < spMin
+      ? `Storepay-ээр ${money(spMin)}-с доош захиалга хийх боломжгүй (одоогийн дүн ${money(total)}). QPay сонгох эсвэл дүнгээ нэмнэ үү.`
+      : `Storepay-ээр ${money(spMax)}-с дээш захиалга хийх боломжгүй. QPay сонгоно уу.` }];
+  }
   const loanPhone = spPhone.replace(/\D/g, '').length >= 8 ? spPhone : phone;
   if (paySP) {
     if (spPhone && spPhone.replace(/\D/g, '').length < 8) return [400, { error: 'Storepay-д бүртгэлтэй утасны дугаараа зөв оруулна уу' }];

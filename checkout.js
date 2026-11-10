@@ -128,7 +128,7 @@
       area.innerHTML = `<div class="co-ok"><div class="big">✅</div><h3>${done.paid ? `Төлбөр амжилттай — ${esc(done.number)}` : `Захиалга ${esc(done.number)} хүлээн авлаа`}</h3>
         ${done.paid
           ? `<p><b>${fmt(done.paidAmount || done.total)}</b> ${done.payMethod === 'storepay' ? 'Storepay-ээр баталгаажлаа' : 'төлөгдлөө'}. Баярлалаа! Манай ажилтан <b>${esc(done.phone)}</b> дугаарт ${done.delivery === 'pickup' ? 'бараагаа авах цагийг' : 'хүргэлтийн цагийг'} мэдэгдэнэ.</p>`
-          : BNPL[done.payMethod] ? `<p>Нийт <b>${fmt(done.total)}</b>. Та <b>${BNPL[done.payMethod].name}</b>-ээр хуваан төлөхийг сонгосон. Манай ажилтан удахгүй <b>${esc(done.phone)}</b> дугаар руу ${BNPL[done.payMethod].name} нэхэмжлэх илгээнэ — ${BNPL[done.payMethod].name} апп дээрээ баталгаажуулна уу.</p>`
+          : BNPL[done.payMethod] ? `<p>Нийт <b>${fmt(done.total)}</b>. Та <b>${BNPL[done.payMethod].name}</b>-ээр хуваан төлөхийг сонгосон. Манай ажилтан удахгүй <b>${esc(done.spPhone || done.phone)}</b> дугаар руу ${BNPL[done.payMethod].name} нэхэмжлэх илгээнэ — ${BNPL[done.payMethod].name} апп дээрээ баталгаажуулна уу.</p>`
           : `<p>Нийт <b>${fmt(done.total)}</b>. Манай ажилтан удахгүй <b>${esc(done.phone)}</b> дугаарт холбогдож, төлбөр болон ${done.delivery === 'pickup' ? 'авах цагийг' : 'хүргэлтийг'} баталгаажуулна.</p>`}
         ${done.qpayError ? `<div class="co-err">${esc(done.qpayError)}</div>` : ''}
         ${done.storepayError ? `<div class="co-err">${esc(done.storepayError)}</div>` : ''}
@@ -148,7 +148,7 @@
     }
     // checkout form
     const f = form || {
-      name: a ? a.name : '', phone: a ? a.phone : '', email: a ? a.email : '', delivery: 'delivery', note: '', save: false, pay: 'qpay',
+      name: a ? a.name : '', phone: a ? a.phone : '', email: a ? a.email : '', delivery: 'delivery', note: '', save: false, pay: 'qpay', spPhone: '',
     };
     const pm = (f.pay === 'qpay' && payOn) || BNPL[f.pay] ? f.pay : (payOn ? 'qpay' : 'storepay');
     const saved = savedAddr(a);
@@ -177,6 +177,10 @@
         <div class="co-which">${payOn ? `<label><input type="radio" name="co-pay" value="qpay" ${pm === 'qpay' ? 'checked' : ''}><span><b>💳 QPay-ээр одоо төлөх</b><small>QR код эсвэл банкны апп-аар шууд</small></span></label>` : ''}
           <label><input type="radio" name="co-pay" value="storepay" ${pm === 'storepay' ? 'checked' : ''}><span><b>🟣 Storepay — хуваан төлөх</b><small>${spOn ? 'Storepay апп руу тань хүсэлт шууд очно — зөвшөөрөхөд л болно' : 'Ажилтан таны утас руу Storepay нэхэмжлэх илгээнэ'}</small></span></label>
           <label><input type="radio" name="co-pay" value="pocket" ${pm === 'pocket' ? 'checked' : ''}><span><b>🟢 Pocket — хуваан төлөх</b><small>Ажилтан таны утас руу Pocket нэхэмжлэх илгээнэ</small></span></label></div>
+        <div id="co-sp" style="${pm === 'storepay' && spOn ? '' : 'display:none'}">
+          <label for="co-spphone">Storepay-д бүртгэлтэй утас <small style="font-weight:400;color:#5a6a72">(өөр дугаар бол)</small></label>
+          <input id="co-spphone" type="tel" maxlength="20" value="${esc(f.spPhone)}" placeholder="Хоосон бол дээрх утас руу очно">
+          <p class="co-sum" style="text-align:left;margin:4px 0 0">Зээлийн хүсэлт энэ дугаарын Storepay апп дээр гарна. Хүргэлтийн утас болон Storepay-ийн бүртгэл өөр байвал энд бүртгэлтэй дугаараа бичнэ үү.</p></div>
         ${err ? `<div class="co-err">${esc(err)}</div>` : ''}
         <button class="co-go" ${busy ? 'disabled' : ''}>${busy ? 'Илгээж байна…' : goLabel(pm, fmt(total(l)))}</button>
       </form>`;
@@ -189,7 +193,7 @@
     const w = area.querySelector('input[name="co-which"]:checked');
     const which = savedAddr(a) && w ? w.value : 'new';
     return {
-      name: g('co-name').trim(), phone: g('co-phone').trim(), email: g('co-email').trim(), note: g('co-note').trim(),
+      name: g('co-name').trim(), phone: g('co-phone').trim(), email: g('co-email').trim(), note: g('co-note').trim(), spPhone: g('co-spphone').trim(),
       delivery: way ? way.value : 'delivery', which, save: !!area.querySelector('#co-save')?.checked,
       pay: (area.querySelector('input[name="co-pay"]:checked') || {}).value || (payOn ? 'qpay' : 'storepay'),
       addr: which === 'saved' ? { ...a.addr } : (acc() && area.querySelector('#co-new') ? acc().readAddr(area.querySelector('#co-new')) : {}),
@@ -216,7 +220,10 @@
     else if (a === 'paycancel') cancelPay(false);
   });
   area.addEventListener('change', e => {
-    if (e.target.name === 'co-pay') { const b = area.querySelector('.co-go:not([data-co])'); if (b) b.textContent = goLabel(e.target.value, fmt(total(lines()))); }
+    if (e.target.name === 'co-pay') {
+      const b = area.querySelector('.co-go:not([data-co])'); if (b) b.textContent = goLabel(e.target.value, fmt(total(lines())));
+      const sp = area.querySelector('#co-sp'); if (sp) sp.style.display = e.target.value === 'storepay' && spOn ? '' : 'none';
+    }
     if (e.target.name === 'co-which') area.querySelector('#co-new').style.display = e.target.value === 'saved' ? 'none' : '';
     if (e.target.name === 'co-way') area.querySelector('#co-addr').style.display = e.target.value === 'pickup' ? 'none' : '';
     if (e.target.id === 'acc-a-city' && acc()) {
@@ -235,7 +242,7 @@
       const headers = { 'content-type': 'application/json' };
       const t = acc() && acc().token(); if (t) headers.authorization = 'Bearer ' + t;
       const res = await fetch(API + '/api/orders', { method: 'POST', headers, body: JSON.stringify({
-        items: l, name: v.name, phone: v.phone, email: v.email, delivery: v.delivery, address, addr: v.delivery === 'pickup' ? null : v.addr, note: v.note, pay: v.pay === 'qpay' && !payOn ? 'storepay' : v.pay }) });
+        items: l, name: v.name, phone: v.phone, email: v.email, delivery: v.delivery, address, addr: v.delivery === 'pickup' ? null : v.addr, note: v.note, spPhone: v.spPhone, pay: v.pay === 'qpay' && !payOn ? 'storepay' : v.pay }) });
       const d = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(d.error || ('Алдаа ' + res.status));
       form = null;
@@ -461,7 +468,7 @@
             <p>${o.delivery === 'pickup' ? '🏬 Дэлгүүрээс очиж авна' : '🚚 ' + esc(o.address)}</p>${o.note ? `<p>📝 ${esc(o.note)}</p>` : ''}
             <p class="ord-pay ${o.paid ? 'ok' : ''}">${o.paid ? `${o.payMethod === 'storepay' ? '🟣 Storepay-ээр' : '💳 QPay-ээр'} төлсөн: <b>${fmt(o.paidAmount)}</b> · ${dtm(o.paidAt)}${o.paidAmount < o.total ? ' — ⚠ дутуу' : ''}`
               : o.payMethod === 'qpay' ? `⏳ QPay төлбөр хүлээгдэж байна <button type="button" data-qc="${o.id}">QPay шалгах</button>`
-              : o.payMethod === 'storepay' && o.spLoan ? `⏳ Storepay баталгаажуулалт хүлээгдэж байна (зээл #${esc(o.spLoan)}) <button type="button" data-qc="${o.id}">Storepay шалгах</button>` : BNPL[o.payMethod] ? `${BNPL[o.payMethod].icon} <b>${BNPL[o.payMethod].name}</b> — хэрэглэгчийн ${esc(o.phone)} дугаар руу ${BNPL[o.payMethod].name} нэхэмжлэх илгээнэ үү` : '🤝 Дараа төлөх — ажилтан төлбөрийг тохирно'}</p>
+              : o.payMethod === 'storepay' && o.spLoan ? `⏳ Storepay баталгаажуулалт хүлээгдэж байна (зээл #${esc(o.spLoan)}${o.spPhone ? ` · ${esc(o.spPhone)} дугаарт` : ''}) <button type="button" data-qc="${o.id}">Storepay шалгах</button>` : BNPL[o.payMethod] ? `${BNPL[o.payMethod].icon} <b>${BNPL[o.payMethod].name}</b> — хэрэглэгчийн ${esc(o.spPhone || o.phone)} дугаар руу ${BNPL[o.payMethod].name} нэхэмжлэх илгээнэ үү` : '🤝 Дараа төлөх — ажилтан төлбөрийг тохирно'}</p>
             ${o.priceCheck && o.priceCheck !== 'ok' ? `<p class="ord-warn">⚠ ${esc(o.priceCheck)}</p>` : ''}
             <label style="font-weight:700;font-size:13px">Төлөв</label><select data-st="${o.id}" style="width:100%;padding:8px;margin:4px 0 10px">${Object.keys(S).map(k => `<option value="${k}" ${k === o.status ? 'selected' : ''}>${esc(S[k])}</option>`).join('')}</select>
             <label style="font-weight:700;font-size:13px">Ажилтны тэмдэглэл</label><textarea data-sn="${o.id}" placeholder="Зөвхөн ажилтнуудад харагдана">${esc(o.staffNote)}</textarea>

@@ -22,7 +22,7 @@ export const STATUS = {
 };
 const COLS = { number: 'TEXT', name: 'TEXT', phone: 'TEXT', email: 'TEXT', address: 'TEXT', addr: 'TEXT',
   delivery: 'TEXT', staff_note: 'TEXT', updated_at: 'TEXT', updated_by: 'TEXT',
-  pay_method: 'TEXT', pay_key: 'TEXT', qpay_invoice: 'TEXT', sp_loan: 'TEXT', paid_amount: 'INTEGER', paid_at: 'TEXT', checked_at: 'INTEGER', price_check: 'TEXT' };
+  pay_method: 'TEXT', pay_key: 'TEXT', qpay_invoice: 'TEXT', sp_loan: 'TEXT', sp_phone: 'TEXT', paid_amount: 'INTEGER', paid_at: 'TEXT', checked_at: 'INTEGER', price_check: 'TEXT' };
 let ready = false;
 
 export async function ensureOrders(env) {
@@ -49,7 +49,8 @@ export function orderView(o) {
     status: o.status, statusText: STATUS[o.status] || o.status, total: o.total, items: parse(o.items, []),
     name: o.name || '', phone: o.phone || '', email: o.email || '', address: o.address || '',
     delivery: o.delivery || 'delivery', note: o.note || '', customerId: o.customer_id || null,
-    payMethod: o.pay_method || 'later', spLoan: o.sp_loan || null, paid: !!o.paid_at, paidAmount: o.paid_amount || 0, paidAt: o.paid_at || null,
+    payMethod: o.pay_method || 'later', spLoan: o.sp_loan || null, spPhone: o.sp_phone || '',
+    paid: !!o.paid_at, paidAmount: o.paid_amount || 0, paidAt: o.paid_at || null,
     priceCheck: o.price_check || null,
   };
 }
@@ -110,6 +111,10 @@ export async function createOrder(request, env, customerId) {
   })).filter((i) => Number.isSafeInteger(i.id) && i.name);
   if (!items.length) return [400, { error: 'Сагс хоосон байна' }];
   const name = clip(b.name, 80), phone = clip(String(b.phone || '').replace(/[^\d+ ]/g, ''), 20);
+  // The Storepay account is often in another name or another number than the one the order is
+  // delivered to — a spouse's phone, a second SIM. The customer may give that number separately;
+  // left empty it falls back to the order's phone.
+  const spPhone = clip(String(b.spPhone || '').replace(/[^\d+ ]/g, ''), 20);
   const email = clip(b.email, 120).toLowerCase(), note = clip(b.note, 500);
   const delivery = b.delivery === 'pickup' ? 'pickup' : 'delivery';
   const address = delivery === 'pickup' ? '' : clip(b.address, 400);
@@ -130,21 +135,29 @@ export async function createOrder(request, env, customerId) {
   const method = payQ ? 'qpay' : (BNPL[b.pay] ? b.pay : 'later');
   const payKey = crypto.randomUUID().replace(/-/g, '');
   const paySP = method === 'storepay' && storepay.enabled(env) && total > 0;
+  const loanPhone = spPhone.replace(/\D/g, '').length >= 8 ? spPhone : phone;
   if (paySP) {
+    if (spPhone && spPhone.replace(/\D/g, '').length < 8) return [400, { error: 'Storepay-д бүртгэлтэй утасны дугаараа зөв оруулна уу' }];
     // tell the customer now if their Storepay limit is not enough, so they can pick another way
     let limit = null;
-    try { limit = await storepay.possibleAmount(env, phone); } catch (e) { console.error('storepay limit', e.message); }
-    if (limit !== null && limit < total) return [400, { error: `Таны Storepay-ийн боломжит эрх ${money(limit)} — ${money(total)}-д хүрэлцэхгүй байна. QPay эсвэл Pocket сонгоно уу.` }];
+    try { limit = await storepay.possibleAmount(env, loanPhone); } catch (e) { console.error('storepay limit', e.message); }
+    // A zero limit on the order's own phone usually means that number simply has no Storepay
+    // account, which is a different problem from a limit that is too small — say so, or the
+    // customer re-reads the same number and gives up.
+    if (limit !== null && limit < total) return [400, { error: limit === 0
+      ? `${loanPhone} дугаарт Storepay-ийн боломжит эрх алга байна. Storepay-д бүртгэлтэй дугаараа доор оруулна уу, эсвэл QPay / Pocket сонгоно уу.`
+      : `Таны Storepay-ийн боломжит эрх ${money(limit)} — ${money(total)}-д хүрэлцэхгүй байна. QPay эсвэл Pocket сонгоно уу.` }];
   }
 
-  const r = await env.DB.prepare(`INSERT INTO orders (customer_id, created_at, updated_at, status, total, items, note, name, phone, email, address, addr, delivery, pay_method, pay_key, price_check)
-    VALUES (?1, ?2, ?2, 'new', ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)`)
+  const r = await env.DB.prepare(`INSERT INTO orders (customer_id, created_at, updated_at, status, total, items, note, name, phone, email, address, addr, delivery, pay_method, pay_key, price_check, sp_phone)
+    VALUES (?1, ?2, ?2, 'new', ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)`)
     .bind(customerId || 0, now, total, JSON.stringify(items), note, name, phone, email, address,
-      b.addr && typeof b.addr === 'object' ? JSON.stringify(b.addr).slice(0, 1000) : null, delivery, method, payKey, priceCheck).run();
+      b.addr && typeof b.addr === 'object' ? JSON.stringify(b.addr).slice(0, 1000) : null, delivery, method, payKey, priceCheck,
+      loanPhone === phone ? null : loanPhone).run();
   const id = r.meta.last_row_id, number = `BS${1000 + id}`;
   await env.DB.prepare('UPDATE orders SET number = ?1 WHERE id = ?2').bind(number, id).run();
   const row = { id, number, created_at: now, status: 'new', total, items: JSON.stringify(items), name, phone, email, address, delivery, note,
-    customer_id: customerId, pay_method: method, price_check: priceCheck };
+    customer_id: customerId, pay_method: method, price_check: priceCheck, sp_phone: loanPhone === phone ? null : loanPhone };
   const o = orderView(row);
 
   if (payQ) {
@@ -169,9 +182,9 @@ export async function createOrder(request, env, customerId) {
     // Storepay: the customer confirms the loan in the Storepay app; staff hear about it when it is confirmed
     try {
       const callback = `${new URL(request.url).origin}/api/storepay/callback?o=${id}&k=${payKey}`;
-      const loan = await storepay.createLoan(env, { number, amount: total, phone, callback });
+      const loan = await storepay.createLoan(env, { number, amount: total, phone: loanPhone, callback });
       await env.DB.prepare('UPDATE orders SET sp_loan = ?1 WHERE id = ?2').bind(loan, id).run();
-      return [200, { ok: true, order: o, payKey, storepay: { loan, phone } }];
+      return [200, { ok: true, order: o, payKey, storepay: { loan, phone: loanPhone } }];
     } catch (e) {
       // request failed: keep the order; staff send the Storepay invoice by hand
       console.error('storepay loan', e.message);
@@ -187,7 +200,7 @@ export async function createOrder(request, env, customerId) {
     telegram(env, tgText(o, `🛒 Шинэ захиалга ${number} · ${BNPL[method] ? '🧾 ' + BNPL[method] + ' — нэхэмжлэх илгээх' : '⏳ төлбөр хийгдээгүй'}`)),
   ];
   if (email) jobs.push(mail(env, email, `Таны захиалга ${number} хүлээн авлаа — Buddy Shop`,
-    orderHtml(o, `Сайн байна уу${name ? ', ' + esc(name) : ''}! Таны <b>${number}</b> дугаартай захиалгыг хүлээн авлаа. ${BNPL[method] ? `Та <b>${BNPL[method]}</b>-ээр хуваан төлөхийг сонгосон. Манай ажилтан удахгүй таны <b>${esc(phone)}</b> дугаар руу ${BNPL[method]} нэхэмжлэх илгээнэ — апп дээрээ баталгаажуулна уу.` : 'Манай ажилтан удахгүй утсаар холбогдож, төлбөр болон хүргэлтийг баталгаажуулна.'}`),
+    orderHtml(o, `Сайн байна уу${name ? ', ' + esc(name) : ''}! Таны <b>${number}</b> дугаартай захиалгыг хүлээн авлаа. ${BNPL[method] ? `Та <b>${BNPL[method]}</b>-ээр хуваан төлөхийг сонгосон. Манай ажилтан удахгүй таны <b>${esc(loanPhone)}</b> дугаар руу ${BNPL[method]} нэхэмжлэх илгээнэ — апп дээрээ баталгаажуулна уу.` : 'Манай ажилтан удахгүй утсаар холбогдож, төлбөр болон хүргэлтийг баталгаажуулна.'}`),
     `Таны ${number} захиалгыг хүлээн авлаа. Нийт ${money(total)}. Манай ажилтан удахгүй холбогдоно.`));
   await Promise.allSettled(jobs);
   return [200, { ok: true, order: o }];

@@ -71,26 +71,23 @@ case "$ST" in
     $ST" ;;
 esac
 
-printf '\n    Нэвтрэлтийг шалгах уу? Ажилтны нэвтрэлт хэрэгтэй.\n'
-printf '    Алгасах бол хоосон Enter дарна.\n'
-printf '    Ажилтны нэр: '; read -r SU
-if [ -n "$SU" ]; then
-  printf '    Ажилтны нууц үг: '; stty -echo 2>/dev/null; read -r SP; stty echo 2>/dev/null; printf '\n'
-  TOK=$(curl -fsS --max-time 30 -X POST "$API/api/login" -H 'content-type: application/json' \
-        --data-binary "$(printf '{"user":"%s","password":"%s"}' "$SU" "$SP")" 2>/dev/null \
-        | sed -n 's/.*"token":"\([^"]*\)".*/\1/p')
-  SP=''
-  if [ -z "$TOK" ]; then
-    warn "Ажилтнаар нэвтэрч чадсангүй — нэвтрэлтийн шалгалт алгаслаа."
-  else
-    PING=$(curl -fsS --max-time 60 -H "authorization: Bearer $TOK" "$API/api/storepay/ping" 2>/dev/null)
-    case "$PING" in
-      *'"ok":true'*) ok "Storepay-д амжилттай нэвтэрлээ — түлхүүрүүд зөв" ;;
-      *) printf '\n❌  Storepay-д нэвтэрч чадсангүй. Хариу:\n    %s\n\n' "$PING"
-         printf '    Ихэвчлэн API хэрэглэгч, систем хэрэглэгч хоёр солигдсоноос болдог.\n'
-         printf '    Скриптийг дахин ажиллуулж, хоёрыг нь сольж оруулаад үзээрэй.\n\n'; exit 1 ;;
-    esac
-  fi
+# Нэвтрэлтийг Keychain дэх нөөцлөлтийн түлхүүрээр шалгана — нэмэлт нууц үг асуухгүй.
+BT=$(security find-generic-password -s buddy-backup -w 2>/dev/null) || BT=''
+if [ -z "$BT" ]; then
+  warn "Keychain-д buddy-backup түлхүүр алга — нэвтрэлтийн шалгалт алгаслаа."
+  warn "nooclolt-tohiruulah.sh-г нэг удаа ажиллуулсны дараа энэ шалгалт автоматаар хийгдэнэ."
+else
+  PING=$(curl -sS --max-time 60 -H "x-backup-token: $BT" "$API/api/storepay/ping" 2>/dev/null)
+  BT=''
+  case "$PING" in
+    *'"ok":true'*) ok "Storepay-д амжилттай нэвтэрлээ — таван түлхүүр зөв" ;;
+    *'Storepay түлхүүр тавиагүй'*) fail "Түлхүүрүүд Worker дээр хүрч ирсэнгүй. Дахин ажиллуулна уу." ;;
+    *) printf '\n❌  Storepay-д нэвтэрч чадсангүй. Серверийн хариу:\n    %s\n\n' "$PING"
+       printf '    Хамгийн түгээмэл шалтгаанууд:\n'
+       printf '      • API хэрэглэгч (merchantapp1) болон систем хэрэглэгч (дугаар) солигдсон\n'
+       printf '      • Систем нууц үг буруу — урилга хүлээн авахдаа үүсгэсэн нь байх ёстой\n'
+       printf '    Скриптийг дахин ажиллуулж засна уу.\n\n'; exit 1 ;;
+  esac
 fi
 
 printf '\n════  Бэлэн  ════\n'

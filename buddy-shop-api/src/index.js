@@ -193,6 +193,20 @@ export default {
         return fail(404, 'Not found');
       }
 
+      // Are the Storepay secrets not just present but correct? Logs in and stops there — no loan
+      // is created — so this is safe to run as often as you like. Takes the same two credentials
+      // as the backup routes: BACKUP_TOKEN already downloads the whole database, so letting it
+      // ask whether a login works widens nothing, and it saves the setup script a password
+      // prompt it kept getting wrong.
+      if (request.method === 'GET' && path === '/api/storepay/ping') {
+        const bt = request.headers.get('x-backup-token') || '';
+        const byToken = !!env.BACKUP_TOKEN && sameText(bt, env.BACKUP_TOKEN);
+        if (!byToken && !(await whoIs(request, env))) return fail(401, 'Дахин нэвтэрнэ үү');
+        if (!storepay.enabled(env)) return json({ ok: false, error: 'Storepay түлхүүр тавиагүй байна' }, 200, { 'cache-control': 'no-store' });
+        try { await storepay.ping(env); return json({ ok: true }, 200, { 'cache-control': 'no-store' }); }
+        catch (e) { return json({ ok: false, error: e.message }, 200, { 'cache-control': 'no-store' }); }
+      }
+
       // ---- database backups ----
       // These files hold product cost and every customer's details, so they never leave without
       // a credential. Two are accepted: a signed-in staff token, or BACKUP_TOKEN — a secret of
@@ -231,13 +245,6 @@ export default {
       const user = await whoIs(request, env);
       if (!user) return fail(401, 'Дахин нэвтэрнэ үү');
       if (request.method === 'GET' && path === '/api/me') return json({ user });
-      // Are the Storepay secrets not just present but correct? Logs in and nothing else: no loan
-      // is created, so this is safe to run as often as you like.
-      if (request.method === 'GET' && path === '/api/storepay/ping') {
-        if (!storepay.enabled(env)) return json({ ok: false, error: 'Storepay түлхүүр тавиагүй байна' }, 200, { 'cache-control': 'no-store' });
-        try { await storepay.ping(env); return json({ ok: true }, 200, { 'cache-control': 'no-store' }); }
-        catch (e) { return json({ ok: false, error: e.message }, 200, { 'cache-control': 'no-store' }); }
-      }
       if (request.method === 'POST' && path === '/api/upload') return uploadImage(request, env, url, user);
       if (path.startsWith('/api/telegram')) {
         try {

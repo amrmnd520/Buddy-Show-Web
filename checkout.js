@@ -13,9 +13,14 @@
   let view = 'cart', busy = false, err = '', done = null, form = null; // form: last typed values
   const BNPL = { storepay: { name: 'Storepay', icon: '🟣' }, pocket: { name: 'Pocket', icon: '🟢' } };
   const goLabel = (m, sum) => m === 'qpay' && payOn ? `Захиалаад QPay-ээр төлөх · ${sum}` : BNPL[m] ? `${BNPL[m].name}-ээр захиалах · ${sum}` : `Захиалга илгээх · ${sum}`;
-  let payOn = false, paying = null, pollTimer = null; // paying: { order, key, q, checking, msg }
+  // spOn: Storepay credentials are set on the server, so the loan request reaches the customer's
+  // app by itself. Without them the choice still works — it just becomes an order staff handle by
+  // hand — and the wording below says which of the two the customer is getting.
+  let payOn = false, spOn = false, paying = null, pollTimer = null; // paying: { order, key, q, checking, msg }
   const checkPay = () => fetch(API + '/api/qpay/status', { cache: 'no-store' }).then(r => r.json()).then(d => {
-    const was = payOn; payOn = !!d.enabled; if (was !== payOn && view !== 'pay') paint();
+    const was = payOn, wasSp = spOn;
+    payOn = !!d.enabled; spOn = !!d.storepay;
+    if ((was !== payOn || wasSp !== spOn) && view !== 'pay') paint();
   }).catch(() => {});
   checkPay();
 
@@ -162,7 +167,7 @@
         <label for="co-note">Захиалгын тайлбар</label><textarea id="co-note" maxlength="500" placeholder="Хүргэлтийн цаг, бусад хүсэлт">${esc(f.note)}</textarea>
         <div class="co-sec">Төлбөр</div>
         <div class="co-which">${payOn ? `<label><input type="radio" name="co-pay" value="qpay" ${pm === 'qpay' ? 'checked' : ''}><span><b>💳 QPay-ээр одоо төлөх</b><small>QR код эсвэл банкны апп-аар шууд</small></span></label>` : ''}
-          <label><input type="radio" name="co-pay" value="storepay" ${pm === 'storepay' ? 'checked' : ''}><span><b>🟣 Storepay — хуваан төлөх</b><small>Ажилтан таны утас руу Storepay нэхэмжлэх илгээнэ</small></span></label>
+          <label><input type="radio" name="co-pay" value="storepay" ${pm === 'storepay' ? 'checked' : ''}><span><b>🟣 Storepay — хуваан төлөх</b><small>${spOn ? 'Storepay апп руу тань хүсэлт шууд очно — зөвшөөрөхөд л болно' : 'Ажилтан таны утас руу Storepay нэхэмжлэх илгээнэ'}</small></span></label>
           <label><input type="radio" name="co-pay" value="pocket" ${pm === 'pocket' ? 'checked' : ''}><span><b>🟢 Pocket — хуваан төлөх</b><small>Ажилтан таны утас руу Pocket нэхэмжлэх илгээнэ</small></span></label></div>
         ${err ? `<div class="co-err">${esc(err)}</div>` : ''}
         <button class="co-go" ${busy ? 'disabled' : ''}>${busy ? 'Илгээж байна…' : goLabel(pm, fmt(total(l)))}</button>

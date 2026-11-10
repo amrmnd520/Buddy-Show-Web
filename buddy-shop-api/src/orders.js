@@ -14,6 +14,10 @@ import { getErp } from './erp.js';
 
 // Storepay / Pocket: «buy now, pay later» — staff sends the customer a Storepay/Pocket invoice by phone number.
 export const BNPL = { storepay: 'Storepay', pocket: 'Pocket' };
+// BNPL above names every instalment provider an order may already carry, so old Pocket orders
+// still read correctly. OFFERED is the narrower list a new order may choose from: Pocket is off
+// until its API is connected, and anything else asked for becomes a «pay later» order.
+const OFFERED = new Set(['storepay']);
 const payLabel = (m) => (m === 'qpay' ? 'QPay' : BNPL[m] ? BNPL[m] + ' (хуваан төлөх)' : 'Дараа төлөх');
 
 export const STATUS = {
@@ -132,7 +136,7 @@ export async function createOrder(request, env, customerId) {
   const total = items.reduce((s, i) => s + i.price * i.qty, 0);
   const now = new Date().toISOString();
   const payQ = b.pay === 'qpay' && qpay.enabled(env) && total > 0;
-  const method = payQ ? 'qpay' : (BNPL[b.pay] ? b.pay : 'later');
+  const method = payQ ? 'qpay' : (OFFERED.has(b.pay) ? b.pay : 'later');
   const payKey = crypto.randomUUID().replace(/-/g, '');
   const paySP = method === 'storepay' && storepay.enabled(env) && total > 0;
   // Storepay's own terms of use, 3.1.1: one purchase is between 100,000₮ and 10,000,000₮.

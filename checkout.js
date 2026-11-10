@@ -11,6 +11,8 @@
   const priceOf = item => Number(item.price) || (findP(item.id)?.price || 0);
   const acc = () => window.BuddyAccount;
   let view = 'cart', busy = false, err = '', done = null, form = null; // form: last typed values
+  // Names every instalment provider an order may carry, for reading back old orders — Pocket is
+  // no longer offered at checkout, but orders placed with it must still display correctly.
   const BNPL = { storepay: { name: 'Storepay', icon: '🟣' }, pocket: { name: 'Pocket', icon: '🟢' } };
   // Storepay terms of use 3.1.1: one purchase is 100,000₮–10,000,000₮. Say so on the basket the
   // customer has rather than letting them choose Storepay and be refused after ordering.
@@ -148,7 +150,7 @@
     if (!l.length) { area.innerHTML = pend; view = 'cart'; return; }
     if (view === 'cart') {
       area.innerHTML = `${pend}<button class="co-go" data-co="checkout">Захиалга өгөх →</button>
-        <p class="co-sum">${payOn ? `QPay-ээр шууд, эсвэл ${spFits(total(l)) ? 'Storepay, Pocket' : 'Pocket'}-оор хуваан төлөх боломжтой.` : `${spFits(total(l)) ? 'Storepay эсвэл Pocket' : 'Pocket'}-оор хуваан төлөх боломжтой.`}</p>`;
+        <p class="co-sum">${[payOn ? 'QPay-ээр шууд' : '', spFits(total(l)) ? 'Storepay-ээр хуваан' : ''].filter(Boolean).join(', эсвэл ') || 'Ажилтан холбогдож төлбөрийг тохирно'}${payOn || spFits(total(l)) ? ' төлөх боломжтой.' : '.'}</p>`;
       return;
     }
     // checkout form
@@ -156,8 +158,10 @@
       name: a ? a.name : '', phone: a ? a.phone : '', email: a ? a.email : '', delivery: 'delivery', note: '', save: false, pay: 'qpay', spPhone: '',
     };
     const spOk = spFits(total(l));
-    let pm = (f.pay === 'qpay' && payOn) || BNPL[f.pay] ? f.pay : (payOn ? 'qpay' : 'storepay');
-    if (pm === 'storepay' && !spOk) pm = payOn ? 'qpay' : 'pocket';
+    // Pocket is not offered until its API is connected, so the only choices are QPay and Storepay.
+    // With neither available the order still goes through as «pay later» and staff settle it.
+    const canPay = (m) => (m === 'qpay' ? payOn : m === 'storepay' ? spOk : false);
+    const pm = canPay(f.pay) ? f.pay : (payOn ? 'qpay' : (spOk ? 'storepay' : 'later'));
     const saved = savedAddr(a);
     const which = saved ? ((form && form.which) || 'saved') : 'new';
     const newSrc = { addr: form && form.which === 'new' && form.addr ? form.addr : (saved ? {} : ((a && a.addr) || {})) };
@@ -184,8 +188,8 @@
         <div class="co-which">${payOn ? `<label><input type="radio" name="co-pay" value="qpay" ${pm === 'qpay' ? 'checked' : ''}><span><b>💳 QPay-ээр одоо төлөх</b><small>QR код эсвэл банкны апп-аар шууд</small></span></label>` : ''}
           <label><input type="radio" name="co-pay" value="storepay" ${pm === 'storepay' ? 'checked' : ''} ${spOk ? '' : 'disabled'}><span><b>🟣 Storepay — хуваан төлөх</b><small>${!spOk
             ? (total(l) < SP_MIN ? `Storepay ${fmt(SP_MIN)}-с дээш захиалгад л боломжтой — одоогоор ${fmt(total(l))}` : `Storepay ${fmt(SP_MAX)}-с дээш захиалга авдаггүй`)
-            : spOn ? 'Storepay апп руу тань хүсэлт шууд очно — зөвшөөрөхөд л болно' : 'Ажилтан таны утас руу Storepay нэхэмжлэх илгээнэ'}</small></span></label>
-          <label><input type="radio" name="co-pay" value="pocket" ${pm === 'pocket' ? 'checked' : ''}><span><b>🟢 Pocket — хуваан төлөх</b><small>Ажилтан таны утас руу Pocket нэхэмжлэх илгээнэ</small></span></label></div>
+            : spOn ? 'Storepay апп руу тань хүсэлт шууд очно — зөвшөөрөхөд л болно' : 'Ажилтан таны утас руу Storepay нэхэмжлэх илгээнэ'}</small></span></label></div>
+        ${payOn || spOk ? '' : '<p class="co-sum" style="text-align:left">Энэ дүнд онлайн төлбөрийн сонголт одоогоор алга. Захиалгаа илгээвэл манай ажилтан холбогдож төлбөрийг тохирно.</p>'}
         <div id="co-sp" style="${pm === 'storepay' && spOn ? '' : 'display:none'}">
           <label for="co-spphone">Storepay-д бүртгэлтэй утас <small style="font-weight:400;color:#5a6a72">(өөр дугаар бол)</small></label>
           <input id="co-spphone" type="tel" maxlength="20" value="${esc(f.spPhone)}" placeholder="Хоосон бол дээрх утас руу очно">
@@ -204,7 +208,7 @@
     return {
       name: g('co-name').trim(), phone: g('co-phone').trim(), email: g('co-email').trim(), note: g('co-note').trim(), spPhone: g('co-spphone').trim(),
       delivery: way ? way.value : 'delivery', which, save: !!area.querySelector('#co-save')?.checked,
-      pay: (area.querySelector('input[name="co-pay"]:checked') || {}).value || (payOn ? 'qpay' : (spFits(total(lines())) ? 'storepay' : 'pocket')),
+      pay: (area.querySelector('input[name="co-pay"]:checked') || {}).value || (payOn ? 'qpay' : (spFits(total(lines())) ? 'storepay' : 'later')),
       addr: which === 'saved' ? { ...a.addr } : (acc() && area.querySelector('#co-new') ? acc().readAddr(area.querySelector('#co-new')) : {}),
     };
   }
@@ -251,7 +255,7 @@
       const headers = { 'content-type': 'application/json' };
       const t = acc() && acc().token(); if (t) headers.authorization = 'Bearer ' + t;
       const res = await fetch(API + '/api/orders', { method: 'POST', headers, body: JSON.stringify({
-        items: l, name: v.name, phone: v.phone, email: v.email, delivery: v.delivery, address, addr: v.delivery === 'pickup' ? null : v.addr, note: v.note, spPhone: v.spPhone, pay: v.pay === 'qpay' && !payOn ? (spFits(total(l)) ? 'storepay' : 'pocket') : v.pay }) });
+        items: l, name: v.name, phone: v.phone, email: v.email, delivery: v.delivery, address, addr: v.delivery === 'pickup' ? null : v.addr, note: v.note, spPhone: v.spPhone, pay: v.pay === 'qpay' && !payOn ? (spFits(total(l)) ? 'storepay' : 'later') : v.pay }) });
       const d = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(d.error || ('Алдаа ' + res.status));
       form = null;

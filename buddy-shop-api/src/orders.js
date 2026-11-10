@@ -311,6 +311,20 @@ export async function payStatus(env, id, key, check) {
   return [200, { paid: !!row.paid_at && row.paid_amount >= row.total, short: !!row.paid_at && row.paid_amount < row.total, paidAmount: row.paid_amount || 0, total: row.total, status: row.status }];
 }
 
+// customer: «Захиалга цуцлах» / «Төлбөрийн арга солих» on the payment screen (only while unpaid)
+export async function customerCancel(env, id, key) {
+  let row = await rowByKey(env, id, key);
+  if (!row) return [404, { error: 'Захиалга олдсонгүй' }];
+  if (!row.paid_at) { try { await checkRow(env, row, true); } catch (e) { console.error('cancel check', e.message); } }
+  row = await env.DB.prepare('SELECT * FROM orders WHERE id = ?1').bind(id).first();
+  if (row.paid_at) return [409, { error: 'Төлбөр аль хэдийн орсон тул цуцлах боломжгүй. Манай ажилтантай холбогдоно уу.', paid: true }];
+  if (row.status !== 'new') return [409, { error: 'Захиалгыг цуцлах боломжгүй. Манай ажилтантай холбогдоно уу.' }];
+  await env.DB.prepare(`UPDATE orders SET status = 'cancelled', updated_at = ?1, updated_by = 'Хэрэглэгч',
+      staff_note = TRIM(COALESCE(staff_note, '') || ' Хэрэглэгч төлбөрийн дэлгэцээс цуцалсан.') WHERE id = ?2`).bind(new Date().toISOString(), id).run();
+  if (row.qpay_invoice && qpay.enabled(env)) await qpay.cancelInvoice(env, row.qpay_invoice);
+  return [200, { ok: true }];
+}
+
 // staff: «QPay шалгах» on one order
 export async function staffCheck(env, id) {
   await ensureOrders(env);

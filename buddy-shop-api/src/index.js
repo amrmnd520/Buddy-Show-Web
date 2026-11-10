@@ -9,6 +9,7 @@ import * as qpay from './qpay.js';
 import * as storepay from './storepay.js';
 import { createOrder, listOrders, updateOrder, qpayCallback, storepayCallback, payStatus, staffCheck } from './orders.js';
 import { customerId, requestCode, verifyCode, passwordLogin, getAccount, updateAccount, deleteAccount, listCustomers, pruneCodes } from './customers.js';
+import { runBackup, listBackups, getBackupFile, backupNotice, latestText } from './backup.js';
 
 const JSON_HEADERS = { 'content-type': 'application/json; charset=utf-8' };
 const CORS = {
@@ -192,6 +193,41 @@ export default {
         return fail(404, 'Not found');
       }
 
+      // ---- database backups ----
+      // These files hold product cost and every customer's details, so they never leave without
+      // a credential. Two are accepted: a signed-in staff token, or BACKUP_TOKEN — a secret of
+      // its own for the monthly download script on the owner's Mac, so that script never has to
+      // keep a staff password and the secret can be rotated alone if the machine is lost.
+      if (path === '/api/backup' || path.startsWith('/api/backup/')) {
+        const bt = request.headers.get('x-backup-token') || '';
+        const byToken = !!env.BACKUP_TOKEN && sameText(bt, env.BACKUP_TOKEN);
+        if (!byToken && !(await whoIs(request, env))) return fail(401, 'Дахин нэвтэрнэ үү');
+
+        if (path === '/api/backup' && request.method === 'GET') {
+          const b = await listBackups(env);
+          const e = await env.IMAGES.get('backup/error.json');
+          return json({ ...b, lastError: e ? JSON.parse(await e.text()) : null }, 200, { 'cache-control': 'no-store' });
+        }
+        if (path === '/api/backup/latest.txt' && request.method === 'GET') {
+          return new Response(await latestText(env), { headers: { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-store' } });
+        }
+        if (path === '/api/backup/run' && request.method === 'POST') {
+          try { return json(await runBackup(env), 200, { 'cache-control': 'no-store' }); }
+          catch (e) { return fail(500, e.message); }
+        }
+        const bf = path.match(/^\/api\/backup\/(\d{4}-\d{2}-\d{2})$/);
+        if (bf && request.method === 'GET') {
+          const obj = await getBackupFile(env, bf[1]);
+          if (!obj) return fail(404, 'Тийм нөөц алга');
+          return new Response(obj.body, { headers: {
+            'content-type': 'application/x-ndjson', 'content-encoding': 'gzip',
+            'content-disposition': `attachment; filename="buddy-${bf[1]}.ndjson.gz"`,
+            'cache-control': 'no-store',
+          } });
+        }
+        return fail(404, 'Not found');
+      }
+
       const user = await whoIs(request, env);
       if (!user) return fail(401, 'Дахин нэвтэрнэ үү');
       if (request.method === 'GET' && path === '/api/me') return json({ user });
@@ -251,12 +287,35 @@ export default {
       ctx.waitUntil(pruneCodes(env).catch((e) => console.error('prune codes', e)));
       return;
     }
-    ctx.waitUntil(syncErp(env).then(
-      async (r) => { console.log('erp sync', r); await env.IMAGES.delete('erp/error.json'); },
-      (e) => saveErpError(env, e),
-    ));
+    // 03:30 Ulaanbaatar, in an invocation of its own: Supabase's free plan backs up nothing,
+    // so this is the only copy of the shop's history.
+    if (event.cron === '30 19 * * *') {
+      ctx.waitUntil(runBackup(env).then(
+        async (r) => {
+          console.log('backup', r.date, r.rows, 'rows', r.ms + 'ms');
+          await env.IMAGES.delete('backup/error.json');
+          await backupNotice(env, r, null).catch((e) => console.error('backup mail', e));
+        },
+        async (e) => { await saveBackupError(env, e); await backupNotice(env, null, e).catch(() => {}); },
+      ));
+      return;
+    }
+    // Hourly while the shop is open (10:00–20:00 Ulaanbaatar). Named rather than left as the
+    // fallback so that adding a cron later cannot silently turn into a price sync.
+    if (event.cron === '0 2-12 * * *') {
+      ctx.waitUntil(syncErp(env).then(
+        async (r) => { console.log('erp sync', r); await env.IMAGES.delete('erp/error.json'); },
+        (e) => saveErpError(env, e),
+      ));
+    }
   },
 };
+
+async function saveBackupError(env, e) {
+  console.error('backup failed', e);
+  await env.IMAGES.put('backup/error.json', JSON.stringify({ at: new Date().toISOString(), error: String((e && e.message) || e) }),
+    { httpMetadata: { contentType: 'application/json' } }).catch(() => {});
+}
 
 async function saveErpError(env, e) {
   console.error('erp sync failed', e);

@@ -7,6 +7,7 @@ import { track, stats, prune } from './stats.js';
 import * as tg from './telegram.js';
 import * as qpay from './qpay.js';
 import * as storepay from './storepay.js';
+import { posAuthed, posInvoice, posCheck, posCancel } from './pos.js';
 import { createOrder, listOrders, updateOrder, qpayCallback, storepayCallback, payStatus, staffCheck, customerCancel } from './orders.js';
 import { customerId, requestCode, verifyCode, passwordLogin, getAccount, updateAccount, deleteAccount, listCustomers, pruneCodes } from './customers.js';
 import { runBackup, listBackups, getBackupFile, backupNotice, latestText } from './backup.js';
@@ -161,6 +162,24 @@ export default {
         const d = JSON.parse(await getErp(env));
         const e = await env.IMAGES.get('erp/error.json');
         return json({ updatedAt: d.updatedAt, count: d.count, ms: d.ms, lastError: e ? JSON.parse(await e.text()) : null }, 200, { 'cache-control': 'no-store' });
+      }
+
+      // ---- Касс (pos.buddyshop.mn) → QPay ----
+      // POST бүр x-pos-token шаардана; callback нь QPay-д хүчинтэй хаяг хэрэгтэй учраас л байгаа —
+      // төлбөрийг үргэлж QPay-ээс шууд асууж баталгаажуулдаг тул энд хийх зүйл байхгүй.
+      if (path === '/api/pos/qpay/callback') return json({ ok: true });
+      if (path.startsWith('/api/pos/')) {
+        if (!posAuthed(env, request)) return fail(401, 'Кассын эрх алга');
+        if (request.method === 'POST' && path === '/api/pos/qpay/invoice') {
+          const r = await posInvoice(request, env); return json(r[1], r[0], { 'cache-control': 'no-store' });
+        }
+        if (request.method === 'GET' && path === '/api/pos/qpay/check') {
+          const r = await posCheck(request, env, url.searchParams.get('id')); return json(r[1], r[0], { 'cache-control': 'no-store' });
+        }
+        if (request.method === 'POST' && path === '/api/pos/qpay/cancel') {
+          const r = await posCancel(request, env); return json(r[1], r[0], { 'cache-control': 'no-store' });
+        }
+        return fail(404, 'Not found');
       }
 
       // ---- QPay ----

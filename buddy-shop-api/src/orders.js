@@ -59,7 +59,7 @@ export function orderView(o) {
   };
 }
 
-async function allow(env, key, limit, windowMs) {
+export async function allow(env, key, limit, windowMs) {
   const now = Date.now();
   await env.DB.prepare('CREATE TABLE IF NOT EXISTS rate_limits (key TEXT PRIMARY KEY, n INTEGER NOT NULL, window_start INTEGER NOT NULL)').run();
   const row = await env.DB.prepare('SELECT n, window_start FROM rate_limits WHERE key = ?1').bind(key).first();

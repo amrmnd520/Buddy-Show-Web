@@ -40,6 +40,10 @@ bucket_name = "buddy-shop-images"
 #   TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID = optional: new-order alerts in Telegram
 #   ORDER_NOTIFY = optional: where new-order emails go (default info@buddyshop.mn)
 #   QPAY_USERNAME, QPAY_PASSWORD, QPAY_INVOICE_CODE = QPay merchant API v2 (from the QPay contract)
+#   POS_TOKEN     = long random string, shared with the till (pos.buddyshop.mn). It is baked into
+#                   that HTML, so anyone behind Cloudflare Access can read it — which is fine: the
+#                   only thing it opens is creating a QPay QR that pays INTO the shop's account and
+#                   reading whether one was paid. Rotate it alone if a till machine is lost.
 #   STOREPAY_APP_USERNAME, STOREPAY_APP_PASSWORD, STOREPAY_USERNAME, STOREPAY_PASSWORD, STOREPAY_STORE_ID = Storepay merchant API
 #     (optional vars STOREPAY_AUTH_URL / STOREPAY_URL if Storepay gives addresses other than auth.storepay.mn / api.storepay.mn)
 # Optional vars: QPAY_URL (default https://merchant.qpay.mn; sandbox https://merchant-sandbox.qpay.mn),

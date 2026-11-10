@@ -16,7 +16,7 @@ const JSON_HEADERS = { 'content-type': 'application/json; charset=utf-8' };
 const CORS = {
   'access-control-allow-origin': '*',
   'access-control-allow-methods': 'GET, POST, PUT, DELETE, OPTIONS',
-  'access-control-allow-headers': 'authorization, content-type',
+  'access-control-allow-headers': 'authorization, content-type, x-pos-token, x-backup-token',
   'access-control-max-age': '86400',
 };
 const TOKEN_DAYS = 30;

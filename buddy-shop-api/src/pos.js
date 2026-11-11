@@ -11,6 +11,7 @@
 // second copy of the truth to keep in step.
 import * as qpay from './qpay.js';
 import * as storepay from './storepay.js';
+import * as paypro from './paypro.js';
 import { allow } from './orders.js';
 
 const MAX = 10000000;   // QPay-ийн нэг нэхэмжлэхийн дээд дүн
@@ -96,6 +97,68 @@ export async function posLoanCheck(request, env, id) {
   if (!id) return [400, { error: 'id алга' }];
   try { return [200, { confirmed: await storepay.confirmed(env, id) }]; }
   catch (e) { return [502, { error: e.message.replace(/^Storepay:\s*/, '') }]; }
+}
+
+// ── Карт терминал (PayPRO Push ECR) ────────────────────────────────────────────────────────
+// purchase нь хүн картаа уншуулахыг хүлээж байж хариу буцаадаг. Тэр хүлээлт Worker дээр
+// тасрах эрсдэлтэй тул касс зэрэгцээд /inquiry-г дууддаг: аль нь түрүүлнэ тэр нь шийднэ.
+// Хоёулаа ижил referralcode ашигладаг учир давхар төлөлт үүсэхгүй.
+
+// POST /api/pos/card/purchase  { amount, ref, method }  → { ok, traceno, approveCode, … }
+export async function posCard(request, env) {
+  if (!paypro.enabled(env)) return [503, { error: 'Карт терминал тохируулаагүй байна' }];
+  const ip = request.headers.get('cf-connecting-ip') || 'x';
+  if (!(await allow(env, 'poscard:' + ip, 200, 3600e3))) return [429, { error: 'Хэт олон хүсэлт. Түр хүлээнэ үү.' }];
+  const b = await request.json().catch(() => ({}));
+  const amount = Math.round(Number(b.amount) || 0);
+  const payment = paypro.METHODS[String(b.method || 'card')];
+  if (!payment) return [400, { error: 'Төлбөрийн хэрэгсэл буруу' }];
+  if (!Number.isSafeInteger(amount) || amount < 1 || amount > MAX) return [400, { error: 'Дүн буруу байна' }];
+  const ref = String(b.ref || '').replace(/[^\w-]/g, '').slice(0, 40);
+  if (!ref) return [400, { error: 'ref алга' }];
+  try {
+    const d = paypro.view(await paypro.purchase(env, { amount, payment, ref }));
+    return [200, d.ok ? d : { ...d, error: d.message || 'Гүйлгээ амжилтгүй' }];
+  } catch (e) {
+    // Хүлээлт тасарсан нь амжилтгүй гэсэн үг биш — касс /inquiry-гаар үргэлжлүүлнэ.
+    return [e.pending ? 202 : 502, { pending: !!e.pending, error: e.message }];
+  }
+}
+
+// GET /api/pos/card/inquiry?ref=…  → { ok, done, … }
+export async function posCardInquiry(request, env, ref) {
+  if (!paypro.enabled(env)) return [503, { error: 'Карт терминал тохируулаагүй байна' }];
+  if (!ref) return [400, { error: 'ref алга' }];
+  try {
+    const d = paypro.view(await paypro.inquiry(env, ref));
+    return [200, { ...d, done: d.ok }];
+  } catch (e) { return [e.pending ? 202 : 502, { pending: !!e.pending, error: e.message }]; }
+}
+
+// POST /api/pos/card/cancel — кассчин болив; терминал дээрх хүлээгдэж буй хүсэлтийг авна
+export async function posCardCancel(request, env) {
+  if (!paypro.enabled(env)) return [503, { error: 'Карт терминал тохируулаагүй байна' }];
+  try { await paypro.cancel(env); return [200, { ok: true }]; }
+  catch (e) { return [200, { ok: false, error: e.message }]; }   // цуцлалт бүтэхгүй нь касс зогсоох шалтгаан биш
+}
+
+// POST /api/pos/card/void  { traceno } — ERP-ийн буцаалттай хамт дуудагдана
+export async function posCardVoid(request, env) {
+  if (!paypro.enabled(env)) return [503, { error: 'Карт терминал тохируулаагүй байна' }];
+  const b = await request.json().catch(() => ({}));
+  const traceno = String(b.traceno || '').trim();
+  if (!traceno) return [400, { error: 'traceno алга' }];
+  try {
+    const d = paypro.view(await paypro.voidTx(env, { traceno }));
+    return [200, d.ok ? d : { ...d, error: d.message || 'Буцаалт амжилтгүй' }];
+  } catch (e) { return [502, { error: e.message }]; }
+}
+
+// GET /api/pos/card/health — өдрийн эхэнд терминал холбогдсон эсэхийг шалгана
+export async function posCardHealth(request, env) {
+  if (!paypro.enabled(env)) return [200, { on: false }];
+  try { const d = await paypro.health(env); return [200, { on: d.succeed === true, message: d.message || '' }]; }
+  catch (e) { return [200, { on: false, message: e.message }]; }
 }
 
 // POST /api/pos/qpay/cancel  { id } — the cashier backed out; let QPay drop the invoice.

@@ -7,7 +7,8 @@ import { track, stats, prune } from './stats.js';
 import * as tg from './telegram.js';
 import * as qpay from './qpay.js';
 import * as storepay from './storepay.js';
-import { posAuthed, posInvoice, posCheck, posCancel, posLoan, posLoanCheck } from './pos.js';
+import { posAuthed, posInvoice, posCheck, posCancel, posLoan, posLoanCheck,
+  posCard, posCardInquiry, posCardCancel, posCardVoid, posCardHealth } from './pos.js';
 import { createOrder, listOrders, updateOrder, qpayCallback, storepayCallback, payStatus, staffCheck, customerCancel } from './orders.js';
 import { customerId, requestCode, verifyCode, passwordLogin, getAccount, updateAccount, deleteAccount, listCustomers, pruneCodes } from './customers.js';
 import { runBackup, listBackups, getBackupFile, backupNotice, latestText } from './backup.js';
@@ -184,6 +185,21 @@ export default {
         }
         if (request.method === 'GET' && path === '/api/pos/storepay/check') {
           const r = await posLoanCheck(request, env, url.searchParams.get('id')); return json(r[1], r[0], { 'cache-control': 'no-store' });
+        }
+        if (request.method === 'POST' && path === '/api/pos/card/purchase') {
+          const r = await posCard(request, env); return json(r[1], r[0], { 'cache-control': 'no-store' });
+        }
+        if (request.method === 'GET' && path === '/api/pos/card/inquiry') {
+          const r = await posCardInquiry(request, env, url.searchParams.get('ref')); return json(r[1], r[0], { 'cache-control': 'no-store' });
+        }
+        if (request.method === 'POST' && path === '/api/pos/card/cancel') {
+          const r = await posCardCancel(request, env); return json(r[1], r[0], { 'cache-control': 'no-store' });
+        }
+        if (request.method === 'POST' && path === '/api/pos/card/void') {
+          const r = await posCardVoid(request, env); return json(r[1], r[0], { 'cache-control': 'no-store' });
+        }
+        if (request.method === 'GET' && path === '/api/pos/card/health') {
+          const r = await posCardHealth(request, env); return json(r[1], r[0], { 'cache-control': 'no-store' });
         }
         return fail(404, 'Not found');
       }

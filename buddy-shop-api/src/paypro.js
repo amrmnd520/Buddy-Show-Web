@@ -46,7 +46,12 @@ async function call(env, path, body, ms) {
 export function purchase(env, { amount, payment, ref }) {
   // skipPrint нь үргэлж true: баримт нэг л удаа, ERP-ийн принтерээс гарна (эзний шийдвэр,
   // 2026-11-11). Терминал өөрөө цаас гаргавал үйлчлүүлэгч хоёр баримт барих болно.
-  return call(env, '/payment/purchase', { amount, payment, referralcode: ref, skipPrint: true }, 28000);
+  //
+  // 65 секунд: PayPRO-гийн purchase timeout нь 60 секунд (Ламбда, 2026-11-11). Үүнээс
+  // эрт таславал терминал дээр гүйлгээ үргэлжилж байхад бид бүтэлгүй гэж бодно. Тэр
+  // 60 секундэд терминал зөвхөн /payment/cancel хүлээж авна. Хугацаа дуусвал касс
+  // /inquiry-гаар төлвийг нь шалгана — тэр нь аль хэдийн зэрэгцээ ажиллаж байгаа.
+  return call(env, '/payment/purchase', { amount, payment, referralcode: ref, skipPrint: true }, 65000);
 }
 
 // Хариу алдагдсан үед гүйлгээ бүтсэн эсэхийг лавлана. Энэ нь давхар төлөлтөөс сэргийлнэ.

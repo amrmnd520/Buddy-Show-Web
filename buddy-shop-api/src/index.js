@@ -7,9 +7,10 @@ import { track, stats, prune } from './stats.js';
 import * as tg from './telegram.js';
 import * as qpay from './qpay.js';
 import * as storepay from './storepay.js';
+import * as pocket from './pocket.js';
 import { posAuthed, posInvoice, posCheck, posCancel, posLoan, posLoanCheck,
   posCard, posCardInquiry, posCardCancel, posCardVoid, posCardHealth } from './pos.js';
-import { createOrder, listOrders, updateOrder, qpayCallback, storepayCallback, payStatus, staffCheck, customerCancel } from './orders.js';
+import { createOrder, listOrders, updateOrder, qpayCallback, storepayCallback, pocketWebhook, payStatus, staffCheck, customerCancel } from './orders.js';
 import { customerId, requestCode, verifyCode, passwordLogin, getAccount, updateAccount, deleteAccount, listCustomers, pruneCodes } from './customers.js';
 import { runBackup, listBackups, getBackupFile, backupNotice, latestText } from './backup.js';
 
@@ -207,7 +208,8 @@ export default {
       // ---- QPay ----
       if (path === '/api/qpay/callback') return qpayCallback(env, url);
       if (path === '/api/storepay/callback') return storepayCallback(env, url);
-      if (path === '/api/qpay/status') return json({ enabled: qpay.enabled(env), storepay: storepay.enabled(env) }, 200, { 'cache-control': 'no-store' });
+      if (path === '/api/pocket/webhook' && request.method === 'POST') return pocketWebhook(env, request);
+      if (path === '/api/qpay/status') return json({ enabled: qpay.enabled(env), storepay: storepay.enabled(env), pocket: pocket.enabled(env) }, 200, { 'cache-control': 'no-store' });
       const pm = path.match(/^\/api\/orders\/(\d+)\/pay$/);
       if (pm && request.method === 'GET') {
         const r = await payStatus(env, Number(pm[1]), url.searchParams.get('k'), url.searchParams.get('check') === '1');

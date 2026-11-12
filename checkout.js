@@ -21,15 +21,23 @@
   const payNav = () => `<button class="co-back" data-co="paychange" ${paying && paying.cancelling ? 'disabled' : ''}>← Төлбөрийн арга солих</button>`;
   const payCancel = () => `<button type="button" class="co-link" data-co="paycancel" ${paying && paying.cancelling ? 'disabled' : ''}>${paying && paying.cancelling ? 'Цуцалж байна…' : 'Захиалга цуцлах'}</button>
         <p class="co-sum">Цонхыг хаавал захиалга хадгалагдана — сагсаа нээгээд дараа нь төлж болно.</p>`;
+  // Pocket gives the QR as text; draw it with qrcodejs (loaded only when needed)
+  let qrLib = null;
+  function drawQr(box, text) {
+    if (!box || !text) return;
+    qrLib = qrLib || new Promise((ok, no) => { const sc = document.createElement('script'); sc.src = 'https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js'; sc.onload = ok; sc.onerror = no; document.head.appendChild(sc); });
+    qrLib.then(() => { box.innerHTML = ''; new QRCode(box, { text, width: 220, height: 220, correctLevel: QRCode.CorrectLevel.L }); })
+      .catch(() => { box.textContent = 'QR ачаалж чадсангүй — «Pocket апп-аар төлөх» товчийг ашиглана уу.'; });
+  }
   const goLabel = (m, sum) => m === 'qpay' && payOn ? `Захиалаад QPay-ээр төлөх · ${sum}` : BNPL[m] ? `${BNPL[m].name}-ээр захиалах · ${sum}` : `Захиалга илгээх · ${sum}`;
   // spOn: Storepay credentials are set on the server, so the loan request reaches the customer's
   // app by itself. Without them the choice still works — it just becomes an order staff handle by
   // hand — and the wording below says which of the two the customer is getting.
-  let payOn = false, spOn = false, paying = null, pollTimer = null; // paying: { order, key, q, checking, msg }
+  let payOn = false, spOn = false, pkOn = false, paying = null, pollTimer = null; // paying: { order, key, q, checking, msg }
   const checkPay = () => fetch(API + '/api/qpay/status', { cache: 'no-store' }).then(r => r.json()).then(d => {
-    const was = payOn, wasSp = spOn;
-    payOn = !!d.enabled; spOn = !!d.storepay;
-    if ((was !== payOn || wasSp !== spOn) && view !== 'pay') paint();
+    const was = payOn, wasSp = spOn, wasPk = pkOn;
+    payOn = !!d.enabled; spOn = !!d.storepay; pkOn = !!d.pocket;
+    if ((was !== payOn || wasSp !== spOn || wasPk !== pkOn) && view !== 'pay') paint();
   }).catch(() => {});
   checkPay();
 
@@ -58,6 +66,8 @@
 .co-which label:has(input:checked){border-color:var(--orange,#d77a35);background:#fff7f0}
 .co-which label:has(input:disabled){opacity:.55;cursor:default;background:#f6f7f8}.co-which label:has(input:disabled) small{color:#8a5a2b}
 .co-pay{text-align:center;display:flex;flex-direction:column}
+.co-pk-qr{display:flex;justify-content:center;margin:10px auto;min-height:220px}.co-pk-qr img,.co-pk-qr canvas{width:220px;height:220px}
+.co-pk-app{display:block;margin:6px 0 4px;padding:12px;border-radius:8px;background:#00b26b;color:#fff;font-weight:800;text-decoration:none}
 .co-link{background:none;border:0;color:#b42318;font:inherit;font-weight:600;text-decoration:underline;cursor:pointer;padding:8px;margin-top:4px}.co-link:disabled{opacity:.5;cursor:default}
 .co-pend{background:#fff4e5;border:1px solid #f3d3a8;border-radius:8px;padding:12px;margin:0 0 12px;font-size:14px;display:grid;gap:8px}.co-pend-b{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.co-pend .co-go{width:auto;flex:1;margin:0}
 .co-steps{text-align:left;margin:10px 0;padding-left:22px;line-height:1.6;font-size:14px}.co-sp-app{display:block;margin:4px 0 10px;padding:10px;border-radius:8px;background:#5b2bd6;color:#fff;font-weight:700;text-decoration:none}
@@ -102,6 +112,20 @@
     const showCartRows = view === 'cart';
     if (cartRows) cartRows.style.display = showCartRows ? '' : 'none';
     if (tot) tot.style.display = showCartRows ? '' : 'none';
+    if (view === 'pay' && paying && paying.pk) {
+      const o = paying.order, k = paying.pk;
+      area.innerHTML = `${payNav()}<div class="co-pay"><h3>🟢 Pocket-оор төлөх</h3>
+        <p class="co-sum">Захиалга <b>${esc(o.number)}</b> · Дүн <b class="amt">${fmt(o.total)}</b></p>
+        ${k.deeplink ? `<a class="co-pk-app" href="${esc(k.deeplink)}">Pocket апп-аар төлөх →</a>` : ''}
+        <div class="co-pk-qr" id="co-pk-qr" aria-label="Pocket QR код"></div>
+        <p class="co-sum">Утсаараа бол дээрх товчийг дарна уу. Компьютер дээр бол Pocket апп-аараа QR-ийг уншуулна уу.</p>
+        <div class="co-wait"><span class="dot"></span> Pocket-ийн төлбөрийг хүлээж байна… төлсний дараа энэ хэсэг автоматаар шинэчлэгдэнэ.</div>
+        ${paying.msg ? `<div class="co-err">${esc(paying.msg)}</div>` : ''}
+        <button class="co-go" data-co="paycheck" ${paying.checking ? 'disabled' : ''}>${paying.checking ? 'Шалгаж байна…' : 'Төлбөрөө төлсөн — шалгах'}</button>
+        ${payCancel()}</div>`;
+      drawQr(area.querySelector('#co-pk-qr'), k.qr);
+      return;
+    }
     if (view === 'pay' && paying && paying.sp) {
       const o = paying.order;
       area.innerHTML = `${payNav()}<div class="co-pay"><h3>🟣 Storepay-ээр төлөх</h3>
@@ -134,23 +158,24 @@
     if (view === 'done' && done) {
       area.innerHTML = `<div class="co-ok"><div class="big">✅</div><h3>${done.paid ? `Төлбөр амжилттай — ${esc(done.number)}` : `Захиалга ${esc(done.number)} хүлээн авлаа`}</h3>
         ${done.paid
-          ? `<p><b>${fmt(done.paidAmount || done.total)}</b> ${done.payMethod === 'storepay' ? 'Storepay-ээр баталгаажлаа' : 'төлөгдлөө'}. Баярлалаа! Манай ажилтан <b>${esc(done.phone)}</b> дугаарт ${done.delivery === 'pickup' ? 'бараагаа авах цагийг' : 'хүргэлтийн цагийг'} мэдэгдэнэ.</p>`
+          ? `<p><b>${fmt(done.paidAmount || done.total)}</b> ${done.payMethod === 'storepay' ? 'Storepay-ээр баталгаажлаа' : done.payMethod === 'pocket' ? 'Pocket-оор төлөгдлөө' : 'төлөгдлөө'}. Баярлалаа! Манай ажилтан <b>${esc(done.phone)}</b> дугаарт ${done.delivery === 'pickup' ? 'бараагаа авах цагийг' : 'хүргэлтийн цагийг'} мэдэгдэнэ.</p>`
           : BNPL[done.payMethod] ? `<p>Нийт <b>${fmt(done.total)}</b>. Та <b>${BNPL[done.payMethod].name}</b>-ээр хуваан төлөхийг сонгосон. Манай ажилтан удахгүй <b>${esc(done.spPhone || done.phone)}</b> дугаар руу ${BNPL[done.payMethod].name} нэхэмжлэх илгээнэ — ${BNPL[done.payMethod].name} апп дээрээ баталгаажуулна уу.</p>`
           : `<p>Нийт <b>${fmt(done.total)}</b>. Манай ажилтан удахгүй <b>${esc(done.phone)}</b> дугаарт холбогдож, төлбөр болон ${done.delivery === 'pickup' ? 'авах цагийг' : 'хүргэлтийг'} баталгаажуулна.</p>`}
         ${done.qpayError ? `<div class="co-err">${esc(done.qpayError)}</div>` : ''}
         ${done.storepayError ? `<div class="co-err">${esc(done.storepayError)}</div>` : ''}
+        ${done.pocketError ? `<div class="co-err">${esc(done.pocketError)}</div>` : ''}
         ${done.email ? `<p>Баталгаажуулах имэйл ${esc(done.email)} хаяг руу илгээгдлээ.</p>` : ''}
         ${a ? '<p>Захиалга тань «Миний бүртгэл → Захиалгууд» хэсэгт хадгалагдлаа.</p>' : ''}
         <button class="co-go" data-co="close">Дэлгүүр үргэлжлүүлэх</button></div>`;
       return;
     }
-    const pend = paying ? `<div class="co-pend"><div><b>${esc(paying.order.number)}</b> · ${fmt(paying.order.total)} — ${paying.sp ? 'Storepay баталгаажуулалт' : 'төлбөр'} хүлээгдэж байна</div>
+    const pend = paying ? `<div class="co-pend"><div><b>${esc(paying.order.number)}</b> · ${fmt(paying.order.total)} — ${paying.sp ? 'Storepay баталгаажуулалт' : paying.pk ? 'Pocket төлбөр' : 'төлбөр'} хүлээгдэж байна</div>
       <div class="co-pend-b"><button type="button" class="co-go" data-co="payopen">Төлөх →</button><button type="button" class="co-link" data-co="paycancel" ${paying.cancelling ? 'disabled' : ''}>${paying.cancelling ? 'Цуцалж байна…' : 'Захиалга цуцлах'}</button></div>
       ${paying.msg ? `<div class="co-err">${esc(paying.msg)}</div>` : ''}</div>` : '';
     if (!l.length) { area.innerHTML = pend; view = 'cart'; return; }
     if (view === 'cart') {
       area.innerHTML = `${pend}<button class="co-go" data-co="checkout">Захиалга өгөх →</button>
-        <p class="co-sum">${[payOn ? 'QPay-ээр шууд' : '', spFits(total(l)) ? 'Storepay-ээр хуваан' : ''].filter(Boolean).join(', эсвэл ') || 'Ажилтан холбогдож төлбөрийг тохирно'}${payOn || spFits(total(l)) ? ' төлөх боломжтой.' : '.'}</p>`;
+        <p class="co-sum">${[payOn ? 'QPay-ээр шууд' : '', spFits(total(l)) ? (pkOn ? 'Storepay, Pocket-оор хуваан' : 'Storepay-ээр хуваан') : ''].filter(Boolean).join(', эсвэл ') || 'Ажилтан холбогдож төлбөрийг тохирно'}${payOn || spFits(total(l)) ? ' төлөх боломжтой.' : '.'}</p>`;
       return;
     }
     // checkout form
@@ -160,7 +185,8 @@
     const spOk = spFits(total(l));
     // Pocket is not offered until its API is connected, so the only choices are QPay and Storepay.
     // With neither available the order still goes through as «pay later» and staff settle it.
-    const canPay = (m) => (m === 'qpay' ? payOn : m === 'storepay' ? spOk : false);
+    const pkOk = pkOn && spFits(total(l)); // PocketZero has the same 100,000₮–10,000,000₮ range
+    const canPay = (m) => (m === 'qpay' ? payOn : m === 'storepay' ? spOk : m === 'pocket' ? pkOk : false);
     const pm = canPay(f.pay) ? f.pay : (payOn ? 'qpay' : (spOk ? 'storepay' : 'later'));
     const saved = savedAddr(a);
     const which = saved ? ((form && form.which) || 'saved') : 'new';
@@ -188,7 +214,10 @@
         <div class="co-which">${payOn ? `<label><input type="radio" name="co-pay" value="qpay" ${pm === 'qpay' ? 'checked' : ''}><span><b>💳 QPay-ээр одоо төлөх</b><small>QR код эсвэл банкны апп-аар шууд</small></span></label>` : ''}
           <label><input type="radio" name="co-pay" value="storepay" ${pm === 'storepay' ? 'checked' : ''} ${spOk ? '' : 'disabled'}><span><b>🟣 Storepay — хуваан төлөх</b><small>${!spOk
             ? (total(l) < SP_MIN ? `Storepay ${fmt(SP_MIN)}-с дээш захиалгад л боломжтой — одоогоор ${fmt(total(l))}` : `Storepay ${fmt(SP_MAX)}-с дээш захиалга авдаггүй`)
-            : spOn ? 'Storepay апп руу тань хүсэлт шууд очно — зөвшөөрөхөд л болно' : 'Ажилтан таны утас руу Storepay нэхэмжлэх илгээнэ'}</small></span></label></div>
+            : spOn ? 'Storepay апп руу тань хүсэлт шууд очно — зөвшөөрөхөд л болно' : 'Ажилтан таны утас руу Storepay нэхэмжлэх илгээнэ'}</small></span></label>
+          ${pkOn ? `<label><input type="radio" name="co-pay" value="pocket" ${pm === 'pocket' ? 'checked' : ''} ${pkOk ? '' : 'disabled'}><span><b>🟢 Pocket — хуваан төлөх</b><small>${!pkOk
+            ? (total(l) < SP_MIN ? `Pocket ${fmt(SP_MIN)}-с дээш захиалгад л боломжтой — одоогоор ${fmt(total(l))}` : `Pocket ${fmt(SP_MAX)}-с дээш захиалга авдаггүй`)
+            : 'Pocket апп-аараа QR уншуулж эсвэл шууд нээж төлнө (PocketZero)'}</small></span></label>` : ''}</div>
         ${payOn || spOk ? '' : '<p class="co-sum" style="text-align:left">Энэ дүнд онлайн төлбөрийн сонголт одоогоор алга. Захиалгаа илгээвэл манай ажилтан холбогдож төлбөрийг тохирно.</p>'}
         <div id="co-sp" style="${pm === 'storepay' && spOn ? '' : 'display:none'}">
           <label for="co-spphone">Storepay-д бүртгэлтэй утас <small style="font-weight:400;color:#5a6a72">(өөр дугаар бол)</small></label>
@@ -261,6 +290,7 @@
       form = null;
       const keep = { backup: cart.map(x => ({ ...x })), form: v };
       if (d.qpay) { paying = { order: d.order, key: d.payKey, q: d.qpay, ...keep }; view = 'pay'; startPolling(); }
+      else if (d.pocket) { paying = { order: d.order, key: d.payKey, pk: d.pocket, ...keep }; view = 'pay'; startPolling(); }
       else if (d.storepay) { paying = { order: d.order, key: d.payKey, sp: d.storepay, ...keep }; view = 'pay'; startPolling(); }
       else { done = d.order; view = 'done'; }
       cart.length = 0; const c = document.getElementById('count'); if (c) c.textContent = '0';
@@ -300,7 +330,7 @@
     clearInterval(pollTimer);
     const until = Date.now() + 20 * 60e3;
     let tick = 0;
-    pollTimer = setInterval(() => { if (Date.now() > until) clearInterval(pollTimer); else pollPay(false, !!(paying && paying.sp) && ++tick % 5 === 0); }, 4000);
+    pollTimer = setInterval(() => { if (Date.now() > until) clearInterval(pollTimer); else pollPay(false, !!(paying && (paying.sp || paying.pk)) && ++tick % 5 === 0); }, 4000);
   }
   async function pollPay(check, quiet) {
     if (!paying) return;
@@ -479,8 +509,9 @@
             <tr><td></td><td><b>Нийт</b></td><td style="text-align:right"><b>${fmt(o.total)}</b></td></tr></table></div>
           <div><p><b>${esc(o.name)}</b><br>📞 <a href="tel:${esc(o.phone)}">${esc(o.phone)}</a>${o.email ? `<br>✉️ <a href="mailto:${esc(o.email)}">${esc(o.email)}</a>` : ''}${o.customerId ? '<br><small>Бүртгэлтэй хэрэглэгч</small>' : '<br><small>Зочин</small>'}</p>
             <p>${o.delivery === 'pickup' ? '🏬 Дэлгүүрээс очиж авна' : '🚚 ' + esc(o.address)}</p>${o.note ? `<p>📝 ${esc(o.note)}</p>` : ''}
-            <p class="ord-pay ${o.paid ? 'ok' : ''}">${o.paid ? `${o.payMethod === 'storepay' ? '🟣 Storepay-ээр' : '💳 QPay-ээр'} төлсөн: <b>${fmt(o.paidAmount)}</b> · ${dtm(o.paidAt)}${o.paidAmount < o.total ? ' — ⚠ дутуу' : ''}`
+            <p class="ord-pay ${o.paid ? 'ok' : ''}">${o.paid ? `${o.payMethod === 'storepay' ? '🟣 Storepay-ээр' : o.payMethod === 'pocket' ? '🟢 Pocket-оор' : '💳 QPay-ээр'} төлсөн: <b>${fmt(o.paidAmount)}</b> · ${dtm(o.paidAt)}${o.paidAmount < o.total ? ' — ⚠ дутуу' : ''}`
               : o.payMethod === 'qpay' ? `⏳ QPay төлбөр хүлээгдэж байна <button type="button" data-qc="${o.id}">QPay шалгах</button>`
+              : o.payMethod === 'pocket' && o.pkInvoice ? `⏳ Pocket төлбөр хүлээгдэж байна (нэхэмжлэх #${esc(o.pkInvoice)}) <button type="button" data-qc="${o.id}">Pocket шалгах</button>`
               : o.payMethod === 'storepay' && o.spLoan ? `⏳ Storepay баталгаажуулалт хүлээгдэж байна (зээл #${esc(o.spLoan)}${o.spPhone ? ` · ${esc(o.spPhone)} дугаарт` : ''}) <button type="button" data-qc="${o.id}">Storepay шалгах</button>` : BNPL[o.payMethod] ? `${BNPL[o.payMethod].icon} <b>${BNPL[o.payMethod].name}</b> — хэрэглэгчийн ${esc(o.spPhone || o.phone)} дугаар руу ${BNPL[o.payMethod].name} нэхэмжлэх илгээнэ үү` : '🤝 Дараа төлөх — ажилтан төлбөрийг тохирно'}</p>
             ${o.priceCheck && o.priceCheck !== 'ok' ? `<p class="ord-warn">⚠ ${esc(o.priceCheck)}</p>` : ''}
             <label style="font-weight:700;font-size:13px">Төлөв</label><select data-st="${o.id}" style="width:100%;padding:8px;margin:4px 0 10px">${Object.keys(S).map(k => `<option value="${k}" ${k === o.status ? 'selected' : ''}>${esc(S[k])}</option>`).join('')}</select>

@@ -1,6 +1,7 @@
 import { notify } from './telegram.js';
 import * as qpay from './qpay.js';
 import * as storepay from './storepay.js';
+import * as pocket from './pocket.js';
 import { getErp } from './erp.js';
 // Orders placed from the website cart (Cloudflare D1, table "orders").
 // A customer — signed in or not — sends the cart with name, phone and delivery
@@ -26,7 +27,7 @@ export const STATUS = {
 };
 const COLS = { number: 'TEXT', name: 'TEXT', phone: 'TEXT', email: 'TEXT', address: 'TEXT', addr: 'TEXT',
   delivery: 'TEXT', staff_note: 'TEXT', updated_at: 'TEXT', updated_by: 'TEXT',
-  pay_method: 'TEXT', pay_key: 'TEXT', qpay_invoice: 'TEXT', sp_loan: 'TEXT', sp_phone: 'TEXT', paid_amount: 'INTEGER', paid_at: 'TEXT', checked_at: 'INTEGER', price_check: 'TEXT' };
+  pay_method: 'TEXT', pay_key: 'TEXT', qpay_invoice: 'TEXT', sp_loan: 'TEXT', pk_invoice: 'TEXT', sp_phone: 'TEXT', paid_amount: 'INTEGER', paid_at: 'TEXT', checked_at: 'INTEGER', price_check: 'TEXT' };
 let ready = false;
 
 export async function ensureOrders(env) {
@@ -53,7 +54,7 @@ export function orderView(o) {
     status: o.status, statusText: STATUS[o.status] || o.status, total: o.total, items: parse(o.items, []),
     name: o.name || '', phone: o.phone || '', email: o.email || '', address: o.address || '',
     delivery: o.delivery || 'delivery', note: o.note || '', customerId: o.customer_id || null,
-    payMethod: o.pay_method || 'later', spLoan: o.sp_loan || null, spPhone: o.sp_phone || '',
+    payMethod: o.pay_method || 'later', spLoan: o.sp_loan || null, pkInvoice: o.pk_invoice || null, spPhone: o.sp_phone || '',
     paid: !!o.paid_at, paidAmount: o.paid_amount || 0, paidAt: o.paid_at || null,
     priceCheck: o.price_check || null,
   };
@@ -136,7 +137,7 @@ export async function createOrder(request, env, customerId) {
   const total = items.reduce((s, i) => s + i.price * i.qty, 0);
   const now = new Date().toISOString();
   const payQ = b.pay === 'qpay' && qpay.enabled(env) && total > 0;
-  const method = payQ ? 'qpay' : (OFFERED.has(b.pay) ? b.pay : 'later');
+  const method = payQ ? 'qpay' : (OFFERED.has(b.pay) || (b.pay === 'pocket' && pocket.enabled(env)) ? b.pay : 'later');
   const payKey = crypto.randomUUID().replace(/-/g, '');
   const paySP = method === 'storepay' && storepay.enabled(env) && total > 0;
   // Storepay's own terms of use, 3.1.1: one purchase is between 100,000₮ and 10,000,000₮.
@@ -146,6 +147,12 @@ export async function createOrder(request, env, customerId) {
     return [400, { error: total < spMin
       ? `Storepay-ээр ${money(spMin)}-с доош захиалга хийх боломжгүй (одоогийн дүн ${money(total)}). QPay сонгох эсвэл дүнгээ нэмнэ үү.`
       : `Storepay-ээр ${money(spMax)}-с дээш захиалга хийх боломжгүй. QPay сонгоно уу.` }];
+  }
+  const payPK = method === 'pocket' && pocket.enabled(env) && total > 0;
+  if (payPK && (total < pocket.MIN || total > pocket.MAX)) {
+    return [400, { error: total < pocket.MIN
+      ? `Pocket-оор ${money(pocket.MIN)}-с доош захиалга хийх боломжгүй (одоогийн дүн ${money(total)}). QPay сонгох эсвэл дүнгээ нэмнэ үү.`
+      : `Pocket-оор ${money(pocket.MAX)}-с дээш захиалга хийх боломжгүй. QPay сонгоно уу.` }];
   }
   const loanPhone = spPhone.replace(/\D/g, '').length >= 8 ? spPhone : phone;
   if (paySP) {
@@ -203,6 +210,20 @@ export async function createOrder(request, env, customerId) {
       console.error('storepay loan', e.message);
       await env.DB.prepare('UPDATE orders SET staff_note = ?1 WHERE id = ?2').bind('Storepay хүсэлт автоматаар үүссэнгүй: ' + e.message, id).run();
       o.storepayError = `Storepay хүсэлт автоматаар илгээгдсэнгүй (${e.message.replace(/^Storepay:\s*/, '')}). Захиалга тань бүртгэгдсэн — манай ажилтан Storepay нэхэмжлэхийг гараар илгээнэ.`;
+    }
+  }
+
+  if (payPK) {
+    // Pocket: the customer pays the invoice in the Pocket app (QR or deep link); staff hear about it when it is paid
+    try {
+      try { await pocket.ensureWebhook(env, `${new URL(request.url).origin}/api/pocket/webhook`); } catch (e) { console.error('pocket webhook', e.message); }
+      const inv = await pocket.createInvoice(env, { number, amount: total });
+      await env.DB.prepare('UPDATE orders SET pk_invoice = ?1 WHERE id = ?2').bind(inv.id, id).run();
+      return [200, { ok: true, order: o, payKey, pocket: { qr: inv.qr, deeplink: inv.deeplink } }];
+    } catch (e) {
+      console.error('pocket invoice', e.message);
+      await env.DB.prepare('UPDATE orders SET staff_note = ?1 WHERE id = ?2').bind('Pocket нэхэмжлэх автоматаар үүссэнгүй: ' + e.message, id).run();
+      o.pocketError = `Pocket нэхэмжлэх автоматаар үүссэнгүй (${e.message.replace(/^Pocket:\s*/, '')}). Захиалга тань бүртгэгдсэн — манай ажилтан холбогдоно.`;
     }
   }
 
@@ -284,7 +305,7 @@ async function markPaid(env, row, amount, via = 'QPay') {
   const o = orderView({ ...row, paid_amount: amount, paid_at: now, status: row.status === 'new' && amount >= row.total ? 'paid' : row.status });
   const short = amount < o.total ? `\n⚠ Дутуу төлсөн: ${money(amount)} / ${money(o.total)}` : '';
   await Promise.allSettled([
-    telegram(env, tgText(o, `${via === 'QPay' ? '💳 Төлбөр орлоо' : '🟣 Storepay баталгаажлаа'} · ${o.number} · ${money(amount)}`) + short),
+    telegram(env, tgText(o, `${via === 'QPay' ? '💳 Төлбөр орлоо' : (via === 'Pocket' ? '🟢 ' : '🟣 ') + via + '-ээр төлөгдлөө'} · ${o.number} · ${money(amount)}`) + short),
     mail(env, env.ORDER_NOTIFY || 'info@buddyshop.mn', `💳 Төлбөртэй захиалга ${o.number} — ${money(amount)} — ${o.name}`,
       orderHtml(o, `${via}-ээр төлбөр орлоо: <b>${o.number}</b> · ${money(amount)}${short ? ' (дутуу!)' : ''}`), `${o.number} төлөгдлөө ${money(amount)}`),
     o.email ? mail(env, o.email, `Төлбөр баталгаажлаа — ${o.number} — Buddy Shop`,
@@ -295,10 +316,11 @@ async function markPaid(env, row, amount, via = 'QPay') {
 
 async function checkRow(env, row, force) {
   if (row.paid_at) return;
-  const sp = row.sp_loan && storepay.enabled(env), q = row.qpay_invoice && qpay.enabled(env);
-  if (!sp && !q) return;
+  const sp = row.sp_loan && storepay.enabled(env), q = row.qpay_invoice && qpay.enabled(env), pk = row.pk_invoice && pocket.enabled(env);
+  if (!sp && !q && !pk) return;
   if (!force && row.checked_at && Date.now() - row.checked_at < 10000) return;
   await env.DB.prepare('UPDATE orders SET checked_at = ?1 WHERE id = ?2').bind(Date.now(), row.id).run();
+  if (pk) { const s = await pocket.invoiceState(env, row.pk_invoice); if (s.state === 'paid') await markPaid(env, row, s.amount || row.total, 'Pocket'); return; }
   if (sp) { if (await storepay.confirmed(env, row.sp_loan)) await markPaid(env, row, row.total, 'Storepay'); return; }
   const amount = await qpay.paidAmount(env, row.qpay_invoice);
   if (amount > 0) await markPaid(env, row, amount);
@@ -332,6 +354,18 @@ export async function storepayCallback(env, url) {
   return new Response(JSON.stringify({ status: 'Success' }), { status: 200, headers: { 'content-type': 'application/json' } });
 }
 
+// Pocket posts payment events here (one URL for the whole merchant, set in pocket.ensureWebhook):
+// { invoiceId, orderNumber, invoiceState, amount, … }. Always confirmed again with the invoice lookup.
+export async function pocketWebhook(env, request) {
+  await ensureOrders(env);
+  const b = await request.json().catch(() => ({}));
+  const inv = String(b.invoiceId || '').trim(), num = String(b.orderNumber || '').trim();
+  let row = inv ? await env.DB.prepare('SELECT * FROM orders WHERE pk_invoice = ?1').bind(inv).first() : null;
+  if (!row && num) row = await env.DB.prepare("SELECT * FROM orders WHERE number = ?1 AND pay_method = 'pocket'").bind(num).first();
+  if (row) { try { await checkRow(env, row, true); } catch (e) { console.error('pocket webhook', e.message); } }
+  return new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } });
+}
+
 // The checkout page asks our database every few seconds whether the callback has arrived;
 // QPay itself is asked only when the customer presses «Төлбөр шалгах» (check=1).
 export async function payStatus(env, id, key, check) {
@@ -363,7 +397,7 @@ export async function staffCheck(env, id) {
   await ensureOrders(env);
   const row = await env.DB.prepare('SELECT * FROM orders WHERE id = ?1').bind(id).first();
   if (!row) return [404, { error: 'Захиалга олдсонгүй' }];
-  if (!row.qpay_invoice && !row.sp_loan) return [400, { error: 'QPay/Storepay нэхэмжлэхгүй захиалга' }];
+  if (!row.qpay_invoice && !row.sp_loan && !row.pk_invoice) return [400, { error: 'QPay/Storepay нэхэмжлэхгүй захиалга' }];
   try { await checkRow(env, row, true); } catch (e) { return [502, { error: e.message }]; }
   const o = await env.DB.prepare('SELECT * FROM orders WHERE id = ?1').bind(id).first();
   return [200, { ...orderView(o), staffNote: o.staff_note || '', updatedBy: o.updated_by || '' }];

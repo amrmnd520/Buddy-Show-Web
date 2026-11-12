@@ -62,6 +62,9 @@
     base = snapshot();
     ready = true;
     redraw();
+    // staff edits (sizes, prices, photos) are in: let other scripts know
+    window.BUDDY_SYNCED = true;
+    document.dispatchEvent(new Event('buddy:synced'));
   }
 
   /* ---------- automatic saving ---------- */

@@ -15,6 +15,10 @@
     if (p) { setUrl('?p=' + Number(p.id)); document.title = `${p.name} — Buddy Shop`; }
     return r;
   };
+  // a product opened before staff edits arrived: show it again with its sizes and prices
+  document.addEventListener('buddy:synced', () => {
+    if (dlg && dlg.open && typeof detailProductId !== 'undefined' && detailProductId) window.openProduct(detailProductId);
+  });
   if (dlg) dlg.addEventListener('close', () => {
     if (new URLSearchParams(location.search).has('p')) setUrl('');
     document.title = baseTitle;
@@ -25,6 +29,8 @@
   if (!want) return;
   let tries = 0;
   (function go() {
+    // wait for staff edits (sizes, prices) to load first — at most ~6 s
+    if (!window.BUDDY_SYNCED && tries < 24) { tries++; return setTimeout(go, 250); }
     if (find(want)) {
       const cat = document.getElementById('catalog');
       if (cat) cat.scrollIntoView();

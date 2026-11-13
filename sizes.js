@@ -220,3 +220,37 @@ dialog.size-dlg{width:min(860px,96vw);max-height:90vh;border:0;border-radius:10p
     if (e.target.id === 'sd-q') { const v = e.target.value; clearTimeout(dlg._t); dlg._t = setTimeout(() => search(v, false).then(() => keep('sd-q')), 250); }
   });
 })();
+
+/* Admin product list: a «Хэмжээ» column (and room for the «Өнгөний сонголт» column) on every row,
+   so sizes and colours can be set on a new product straight from the list. */
+(() => {
+  if (typeof adminRender !== 'function') return;
+  const st = document.createElement('style');
+  st.textContent = `#admin .admin-panel:has(#adminrows) thead th:nth-child(11){width:170px}
+#admin .admin-panel:has(#adminrows) thead th:nth-child(12){width:120px}
+#adminrows td:nth-child(11),#adminrows td:nth-child(12){overflow:visible!important;vertical-align:top}
+#adminrows td:nth-child(11) button,#adminrows td:nth-child(12) button{width:100%;padding:6px 4px;font-size:12px;font-weight:700;cursor:pointer}
+#adminrows .adm-sz{font-size:11px;color:#5a6a72;margin-top:4px;line-height:1.4}
+#admin .admin-panel:has(#adminrows) table{min-width:1290px}`;
+  document.head.appendChild(st);
+  const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const prev = adminRender;
+  adminRender = function (...a) {
+    const r = prev.apply(this, a);
+    const head = document.querySelector('#admin table thead tr');
+    if (head && !head.querySelector('[data-size-heading]')) head.insertAdjacentHTML('beforeend', '<th data-size-heading>Хэмжээ</th>');
+    const list = typeof products !== 'undefined' ? products : [];
+    document.querySelectorAll('#adminrows tr').forEach(row => {
+      if (row.querySelector('[data-size-cell]')) return;
+      const btn = row.querySelector('button[onclick^="editProductColors("]') || row.querySelector('[onclick*="edit("]');
+      const m = btn && (btn.getAttribute('onclick') || '').match(/\((\d+)/);
+      const p = m && list.find(x => Number(x.id) === Number(m[1]));
+      if (!p) { row.insertAdjacentHTML('beforeend', '<td data-size-cell></td>'); return; }
+      const sz = Array.isArray(p.sizes) ? p.sizes : [];
+      row.insertAdjacentHTML('beforeend', `<td data-size-cell><button type="button" onclick="openSizeEditor(${Number(p.id)})">${sz.length ? 'Хэмжээ засах' : '+ Хэмжээ нэмэх'} (${sz.length})</button>${sz.length ? `<div class="adm-sz">${esc(sz.map(s => s.label).join(' · '))}</div>` : ''}</td>`);
+    });
+    return r;
+  };
+  window.addEventListener('sizes-saved', () => { try { adminRender(); } catch (e) {} });
+  try { adminRender(); } catch (e) {}
+})();

@@ -11,7 +11,7 @@ import * as pocket from './pocket.js';
 import { posAuthed, posInvoice, posCheck, posCancel, posLoan, posLoanCheck,
   posCard, posCardInquiry, posCardCancel, posCardVoid, posCardHealth } from './pos.js';
 import { createOrder, listOrders, updateOrder, qpayCallback, storepayCallback, pocketWebhook, payStatus, staffCheck, customerCancel } from './orders.js';
-import { customerId, requestCode, verifyCode, passwordLogin, getAccount, updateAccount, deleteAccount, listCustomers, pruneCodes } from './customers.js';
+import { customerId, requestCode, verifyCode, passwordLogin, getAccount, updateAccount, deleteAccount, listCustomers, pruneCodes, staffResetCode } from './customers.js';
 import { runBackup, listBackups, getBackupFile, backupNotice, latestText } from './backup.js';
 
 const JSON_HEADERS = { 'content-type': 'application/json; charset=utf-8' };
@@ -308,6 +308,11 @@ export default {
       const om = path.match(/^\/api\/orders\/(\d+)$/);
       if (om && request.method === 'PUT') { const r = await updateOrder(request, env, Number(om[1]), user); return json(r[1], r[0]); }
       if (request.method === 'GET' && path === '/api/customers') return json({ items: await listCustomers(env) }, 200, { 'cache-control': 'no-store' });
+      const cr = path.match(/^\/api\/customers\/(\d+)\/reset$/);
+      if (cr && request.method === 'POST') {
+        try { const r = await staffResetCode(env, Number(cr[1]), env.SHOP_URL || 'https://buddyshop.mn'); return json(r[1], r[0]); }
+        catch (e) { return fail(502, e.message); }
+      }
       if (request.method === 'GET' && path === '/api/stats') return json(await stats(env, url.searchParams.get('days')), 200, { 'cache-control': 'no-store' });
       if (request.method === 'GET' && path === '/api/erp/catalog') {
         return new Response(await getCatalog(env), { headers: { ...JSON_HEADERS, ...CORS, 'cache-control': 'no-store' } });

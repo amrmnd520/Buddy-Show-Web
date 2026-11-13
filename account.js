@@ -323,6 +323,20 @@
   const notify = () => listeners.forEach(fn => { try { fn(account); } catch (e) {} });
   setInterval(() => { const k = account ? account.email : ''; if (k !== notify.k) { notify.k = k; notify(); } }, 700);
 
+  // ---------- «Нууц үг сэргээх» link from the email staff sent: buddyshop.mn/#reset=<email> ----------
+  function fromResetLink() {
+    const m = location.hash.match(/^#reset=(.+)$/); if (!m) return;
+    let e = ''; try { e = decodeURIComponent(m[1]).trim().toLowerCase(); } catch (x) {}
+    try { history.replaceState(history.state, '', location.pathname + location.search); } catch (x) {}
+    if (!/^[^\s@]+@[^\s@]+\.[a-z]{2,}$/i.test(e)) return;
+    if (account && account.email !== e) { ls(TK, null); account = null; paintButton(); }
+    email = e; mode = 'forgot'; step = 'code';
+    msg = 'Имэйлээр ирсэн 6 оронтой кодоо оруулаад шинэ нууц үгээ зохионо уу.'; msgOk = true;
+    draw(); modal.classList.add('open'); setTimeout(() => box.querySelector('#acc-code')?.focus(), 30);
+  }
+  addEventListener('hashchange', fromResetLink);
+  setTimeout(fromResetLink, 0);
+
   // ---------- start ----------
   paintButton();
   if (ls(TK)) call('/api/account').then(a => { account = a; paintButton(); mergeCart(); paintHeart(); }).catch(() => {});
@@ -333,7 +347,19 @@
   if (adminSection) {
     const panel = document.createElement('div');
     panel.className = 'admin-panel cust-panel'; panel.id = 'customers-admin';
-    let items = null, q = '', page = 0, err = '', loading = false;
+    let items = null, q = '', page = 0, err = '', loading = false, note = '';
+    const sending = {}, sent = {};
+    async function reset(id, mail) {
+      if (!confirm(`${mail} хаяг руу нууц үг сэргээх код илгээх үү?\n\nХэрэглэгч имэйлээрээ ирсэн код, холбоосоор шинэ нууц үгээ өөрөө зохионо.`)) return;
+      sending[id] = true; note = ''; paint();
+      try {
+        const res = await fetch(API + '/api/customers/' + id + '/reset', { method: 'POST', headers: { authorization: 'Bearer ' + staffToken() } });
+        const d = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(d.error || ('Алдаа ' + res.status));
+        sent[id] = true; note = `✓ ${mail} руу сэргээх код илгээлээ (24 цаг хүчинтэй).`;
+      } catch (e) { note = '⚠ ' + e.message; }
+      sending[id] = false; paint();
+    }
     const PER = 10;
     async function load() {
       if (!staffToken() || loading) return;
@@ -364,15 +390,18 @@
       panel.innerHTML = `<div class="eyebrow">CUSTOMERS</div><h2>Бүртгэлтэй хэрэглэгчид ${items ? `<small style="font-size:15px;color:#5a6a72">(${items.length})</small>` : ''}</h2>
         <div class="bar"><input placeholder="Имэйл, нэр, утсаар хайх" value="${esc(q)}" data-q><button type="button" data-r>${loading ? 'Ачаалж байна…' : 'Шинэчлэх'}</button><button type="button" data-csv ${items && items.length ? '' : 'disabled'}>CSV татах</button></div>
         ${err ? `<div class="acc-msg">${esc(err)}</div>` : ''}
-        ${!items ? '' : !list.length ? '<div class="acc-empty">Бүртгэлтэй хэрэглэгч алга.</div>' : `<table><thead><tr><th>Имэйл</th><th>Нэр</th><th>Утас</th><th>Хаяг</th><th>Бүртгүүлсэн</th><th>Сүүлд</th><th>Хадгалсан бараа</th><th>Сагс</th></tr></thead><tbody>
+        ${note ? `<div class="acc-msg${note.startsWith('✓') ? ' ok' : ''}">${esc(note)}</div>` : ''}
+        ${!items ? '' : !list.length ? '<div class="acc-empty">Бүртгэлтэй хэрэглэгч алга.</div>' : `<table><thead><tr><th>Имэйл</th><th>Нэр</th><th>Утас</th><th>Хаяг</th><th>Бүртгүүлсэн</th><th>Сүүлд</th><th>Хадгалсан бараа</th><th>Сагс</th><th>Нууц үг</th></tr></thead><tbody>
           ${list.slice(page * PER, page * PER + PER).map(c => `<tr><td>${esc(c.email)}</td><td>${esc(c.name)}</td><td>${esc(c.phone)}</td><td style="max-width:220px">${esc(c.address)}</td>
-            <td>${dt(c.createdAt)}</td><td>${dt(c.lastLogin)}</td><td title="${esc(c.wishlist.map(name).join(', '))}">${c.wishlist.length}</td><td>${c.cart}</td></tr>`).join('')}</tbody></table>
+            <td>${dt(c.createdAt)}</td><td>${dt(c.lastLogin)}</td><td title="${esc(c.wishlist.map(name).join(', '))}">${c.wishlist.length}</td><td>${c.cart}</td>
+            <td><button type="button" data-reset="${c.id}" data-mail="${esc(c.email)}" title="Хэрэглэгчийн имэйл рүү нууц үг сэргээх код илгээнэ" ${sending[c.id] ? 'disabled' : ''}>${sending[c.id] ? 'Илгээж байна…' : sent[c.id] ? '✓ Илгээсэн' : '🔑 Сэргээх'}</button></td></tr>`).join('')}</tbody></table>
           ${pages > 1 ? `<div class="bar"><button type="button" data-p="-1" ${page ? '' : 'disabled'}>‹ Өмнөх</button><span>${page + 1} / ${pages}</span><button type="button" data-p="1" ${page < pages - 1 ? '' : 'disabled'}>Дараах ›</button></div>` : ''}`}`;
     }
     panel.addEventListener('input', e => { if (e.target.dataset.q !== undefined) { q = e.target.value; page = 0; const pos = e.target.selectionStart; paint(); const i = panel.querySelector('[data-q]'); i.focus(); i.setSelectionRange(pos, pos); } });
     panel.addEventListener('click', e => {
       if (e.target.closest('[data-r]')) load();
       else if (e.target.closest('[data-csv]')) csv();
+      else if (e.target.closest('[data-reset]')) { const b = e.target.closest('[data-reset]'); reset(Number(b.dataset.reset), b.dataset.mail); }
       else if (e.target.closest('[data-p]')) { page += Number(e.target.closest('[data-p]').dataset.p); paint(); }
     });
     const stats = document.getElementById('stats-admin');

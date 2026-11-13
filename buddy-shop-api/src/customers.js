@@ -127,13 +127,16 @@ function profile(row, orders = []) {
 }
 
 // ---------- email ----------
-async function sendCode(env, email, code) {
+async function sendCode(env, email, code, link, minutes = CODE_MINUTES) {
+  const valid = minutes >= 120 ? `${Math.round(minutes / 60)} цагийн` : `${minutes} минутын`;
   if (!env.RESEND_API_KEY) throw new Error('Имэйл илгээх тохиргоо хийгдээгүй байна');
   const html = `<div style="font-family:Arial,sans-serif;max-width:460px;margin:auto;padding:24px;color:#10202c">
   <div style="font-weight:800;letter-spacing:1px;font-size:18px">▲ BUDDY SHOP</div>
-  <p style="font-size:15px">Таны нэвтрэх код:</p>
+  <p style="font-size:15px">${link ? 'Таны нууц үгийг сэргээх хүсэлт ирлээ. Сэргээх код:' : 'Таны нэвтрэх код:'}</p>
   <div style="font-size:34px;font-weight:800;letter-spacing:8px;background:#f2f5f7;border-radius:8px;padding:14px 0;text-align:center">${code}</div>
-  <p style="font-size:13px;color:#5a6a72">Код ${CODE_MINUTES} минутын турш хүчинтэй. Хэрэв та нэвтрэх гэж оролдоогүй бол энэ имэйлийг үл тоомсорлоно уу.</p>
+  ${link ? `<p style="text-align:center;margin:18px 0"><a href="${link}" style="display:inline-block;background:#d77a35;color:#fff;font-weight:800;text-decoration:none;padding:12px 22px;border-radius:6px">Нууц үг сэргээх →</a></p>
+  <p style="font-size:13px;color:#5a6a72">Товчийг дарахад сайт нээгдэнэ — дээрх кодыг оруулаад шинэ нууц үгээ зохионо уу.</p>` : ''}
+  <p style="font-size:13px;color:#5a6a72">Код ${valid} турш хүчинтэй. Хэрэв та нэвтрэх гэж оролдоогүй бол энэ имэйлийг үл тоомсорлоно уу.</p>
   <p style="font-size:13px;color:#5a6a72">Buddy Shop · buddyshop.mn</p></div>`;
   const res = await fetch('https://api.resend.com/emails', {
     method: 'POST',
@@ -142,9 +145,9 @@ async function sendCode(env, email, code) {
       from: env.MAIL_FROM || 'Buddy Shop <info@buddyshop.mn>',
       reply_to: 'info@buddyshop.mn',
       to: [email],
-      subject: `${code} — Buddy Shop нэвтрэх код`,
+      subject: link ? `${code} — Buddy Shop нууц үг сэргээх код` : `${code} — Buddy Shop нэвтрэх код`,
       html,
-      text: `Buddy Shop нэвтрэх код: ${code}\nКод ${CODE_MINUTES} минутын турш хүчинтэй.`,
+      text: `Buddy Shop ${link ? 'нууц үг сэргээх' : 'нэвтрэх'} код: ${code}\nКод ${valid} турш хүчинтэй.${link ? '\n' + link : ''}`,
     }),
   });
   if (!res.ok) {
@@ -266,6 +269,25 @@ export async function deleteAccount(env, id) {
     env.DB.prepare('DELETE FROM customers WHERE id = ?1').bind(id),
   ]);
   return [200, { ok: true }];
+}
+
+// staff: send a customer a password-reset code (the customer sets the new password; staff never see it)
+export async function staffResetCode(env, id, siteUrl) {
+  await ensure(env);
+  const c = await env.DB.prepare('SELECT email FROM customers WHERE id = ?1').bind(id).first();
+  if (!c) return [404, { error: 'Хэрэглэгч олдсонгүй' }];
+  const email = c.email;
+  const last = await env.DB.prepare('SELECT sent_at FROM login_codes WHERE email = ?1').bind(email).first();
+  if (last && Date.now() - last.sent_at < 60e3) return [429, { error: 'Код саяхан илгээгдсэн. 1 минутын дараа дахин оролдоно уу.' }];
+  if (!(await allow(env, 'mail:' + email, 6, 3600e3))) return [429, { error: 'Энэ хэрэглэгч рүү хэт олон код илгээсэн. Нэг цагийн дараа дахин оролдоно уу.' }];
+  const code = String(crypto.getRandomValues(new Uint32Array(1))[0] % 1e6).padStart(6, '0');
+  const link = `${siteUrl.replace(/\/+$/, '')}/#reset=${encodeURIComponent(email)}`;
+  const RESET_MINUTES = 24 * 60; // the customer may read this email later than a code they asked for themselves
+  await sendCode(env, email, code, link, RESET_MINUTES);
+  await env.DB.prepare(`INSERT INTO login_codes (email, hash, expires, tries, sent_at) VALUES (?1, ?2, ?3, 0, ?4)
+    ON CONFLICT(email) DO UPDATE SET hash = ?2, expires = ?3, tries = 0, sent_at = ?4`)
+    .bind(email, await sha(email + ':' + code + ':' + secret(env)), Date.now() + RESET_MINUTES * 60e3, Date.now()).run();
+  return [200, { ok: true, email }];
 }
 
 // staff: list of registered customers

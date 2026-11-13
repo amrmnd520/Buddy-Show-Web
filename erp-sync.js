@@ -72,7 +72,8 @@
   /* ---------- product page: "Үлдэгдэлгүй" ---------- */
   const st = document.createElement('style');
   st.textContent = '.erp-nostock-note{display:inline-block;background:#5a6a72;color:#fff;font-weight:700;padding:6px 12px;border-radius:4px;margin:0 0 10px;letter-spacing:.3px}' +
-    '.add.erp-nostock{background:#9aa6ac!important;cursor:not-allowed}';
+    '.add.erp-nostock{background:#9aa6ac!important;cursor:not-allowed}' +
+    '.erp-stock-note{display:inline-block;background:#eef7f0;color:#1f5f3a;font-weight:700;padding:6px 12px;border-radius:4px;margin:0 0 10px}';
   document.head.appendChild(st);
 
   const findP = id => (typeof products !== 'undefined' ? products : []).find(x => Number(x.id) === Number(id));
@@ -86,7 +87,13 @@
       if (box0 && erpQty(p) !== null) box0.querySelectorAll('p,div,small,span').forEach(el => {
         if (!el.children.length && /импортолсон/.test(el.textContent)) el.textContent = 'Үнэ, үлдэгдэл ERP-ээс автоматаар шинэчлэгддэг.';
       });
-      if (!noStock(p)) return;
+      if (!noStock(p)) {
+        // in stock: show how many (products with sizes show it per size — sizes.js)
+        const q = erpQty(p);
+        if (box0 && q > 0 && !(Array.isArray(p.sizes) && p.sizes.length) && !box0.querySelector('.erp-stock-note'))
+          box0.querySelector('.price')?.insertAdjacentHTML('beforebegin', `<div class="erp-stock-note">✓ Үлдэгдэлтэй: ${q} ширхэг</div>`);
+        return;
+      }
       const box = document.getElementById('detail-content'); if (!box) return;
       if (box.querySelector('.detail-sold-note')) return; // already marked "Дууссан" by staff
       box.querySelector('.price')?.insertAdjacentHTML('beforebegin', '<div class="erp-nostock-note">Үлдэгдэлгүй</div>');

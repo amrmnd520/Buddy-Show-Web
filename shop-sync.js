@@ -208,6 +208,7 @@
   if (tableNote) tableNote.textContent = 'Өөрчлөлт бүр автоматаар хадгалагдана. Хадгалсан эсэхийг дээрх төлөвөөс харна уу.';
 
   let statusText = '';
+  let forgot = null; // { step: 'user' | 'code', user }
   function setStatus(kind, text) {
     const el = bar.querySelector('[data-status]');
     statusText = text || ({ saving: '⏳ Хадгалж байна…', saved: '✓ Бүх өөрчлөлт хадгалагдсан', error: '⚠ Хадгалж чадсангүй' })[kind] || '';
@@ -224,8 +225,41 @@
       bar.querySelector('[data-out]').onclick = () => { if (!dirtyCount() || confirm('Хадгалагдаагүй өөрчлөлт байна. Гарах уу?')) signOut(); };
       work.forEach(el => el && (el.style.display = ''));
       setStatus(ready ? (dirtyCount() ? 'saving' : 'saved') : 'saving', ready ? '' : 'Ачаалж байна…');
+    } else if (forgot) {
+      // «Нууц үгээ мартсан» — a code goes to the shop owner, who passes it on
+      const s2 = forgot.step === 'code';
+      bar.innerHTML = `<form data-forgot style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:0"><strong>Нууц үг сэргээх</strong>
+        ${s2 ? `<span>«${safe(forgot.user)}»</span><input name="c" inputmode="numeric" maxlength="6" placeholder="6 оронтой код" required style="width:130px">
+          <input name="p1" type="password" autocomplete="new-password" minlength="8" placeholder="Шинэ нууц үг" required style="width:160px">
+          <input name="p2" type="password" autocomplete="new-password" minlength="8" placeholder="Давтах" required style="width:140px"><button type="submit">Хадгалаад нэвтрэх</button>`
+        : `<input name="u" placeholder="Нэр" autocomplete="username" required style="width:140px" value="${safe(forgot.user || '')}"><button type="submit">Код авах</button>`}
+        <button type="button" data-cancel>Болих</button><span data-status></span></form>
+        <p class="note" style="margin:6px 0 0;width:100%">${s2 ? 'Кодыг эзэмшигч (info@buddyshop.mn имэйл, Telegram) хүлээн авсан — түүнээс асууж оруулна уу. Код 30 минут хүчинтэй.' : 'Нэрээ оруулбал сэргээх код эзэмшигч рүү (имэйл, Telegram) очно. Эзэмшигчээс кодоо аваарай.'}</p>`;
+      bar.querySelector('[data-cancel]').onclick = () => { forgot = null; statusText = ''; drawBar(); };
+      bar.querySelector('[data-forgot]').onsubmit = async e => {
+        e.preventDefault();
+        const f = e.target;
+        try {
+          if (!s2) {
+            const name = f.u.value.trim().toLowerCase();
+            setStatus('saving', 'Илгээж байна…');
+            await api('/api/staff/forgot', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ user: name }) });
+            forgot = { step: 'code', user: name }; statusText = ''; drawBar(); bar.querySelector('[name="c"]')?.focus();
+          } else {
+            if (f.p1.value !== f.p2.value) { setStatus('error', 'Нууц үг хоорондоо таарахгүй байна'); return; }
+            setStatus('saving', 'Хадгалж байна…');
+            const data = await api('/api/staff/reset', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ user: forgot.user, code: f.c.value, password: f.p1.value }) });
+            forgot = null; token = data.token; user = data.user;
+            try { localStorage.setItem(TOKEN_KEY, token); localStorage.setItem(USER_KEY, user); } catch (x) {}
+            ready = false; await loadOverlay(); drawBar();
+          }
+        } catch (err) { setStatus('error', err.message); }
+      };
+      work.forEach(el => el && (el.style.display = 'none'));
+      if (statusText) setStatus('error', statusText);
     } else {
-      bar.innerHTML = `<form data-login style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:0"><strong>Ажилтан нэвтрэх</strong><input name="u" placeholder="Нэр" autocomplete="username" required style="width:140px"><input name="p" type="password" placeholder="Нууц үг" autocomplete="current-password" required style="width:160px"><button type="submit">Нэвтрэх</button><span data-status></span></form>`;
+      bar.innerHTML = `<form data-login style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:0"><strong>Ажилтан нэвтрэх</strong><input name="u" placeholder="Нэр" autocomplete="username" required style="width:140px"><input name="p" type="password" placeholder="Нууц үг" autocomplete="current-password" required style="width:160px"><button type="submit">Нэвтрэх</button><button type="button" data-forgot-link style="background:none;border:0;padding:0;color:inherit;text-decoration:underline;cursor:pointer;font:inherit;font-size:13px;opacity:.8">Нууц үгээ мартсан?</button><span data-status></span></form>`;
+      bar.querySelector('[data-forgot-link]').onclick = () => { forgot = { step: 'user', user: (bar.querySelector('[name="u"]') || {}).value || '' }; statusText = ''; drawBar(); bar.querySelector('[name="u"]')?.focus(); };
       bar.querySelector('[data-login]').onsubmit = async e => {
         e.preventDefault();
         const f = e.target;

@@ -5,12 +5,13 @@
 import { syncErp, getErp, getCatalog, syncTop, getTop, setDismissed } from './erp.js';
 import { track, stats, prune } from './stats.js';
 import * as tg from './telegram.js';
+import { checkPassword, requestStaffCode, resetStaffPassword } from './staffpass.js';
 import * as qpay from './qpay.js';
 import * as storepay from './storepay.js';
 import * as pocket from './pocket.js';
 import { posAuthed, posInvoice, posCheck, posCancel, posLoan, posLoanCheck,
   posCard, posCardInquiry, posCardCancel, posCardVoid, posCardHealth } from './pos.js';
-import { createOrder, listOrders, updateOrder, qpayCallback, storepayCallback, pocketWebhook, payStatus, staffCheck, customerCancel } from './orders.js';
+import { createOrder, listOrders, updateOrder, qpayCallback, storepayCallback, pocketWebhook, payStatus, staffCheck, customerCancel, mail } from './orders.js';
 import { customerId, requestCode, verifyCode, passwordLogin, getAccount, updateAccount, deleteAccount, listCustomers, pruneCodes, staffResetCode } from './customers.js';
 import { runBackup, listBackups, getBackupFile, backupNotice, latestText } from './backup.js';
 
@@ -72,7 +73,7 @@ async function login(request, env) {
   const { user, password } = await request.json().catch(() => ({}));
   const list = users(env);
   const name = String(user || '').trim().toLowerCase();
-  if (!name || !(name in list) || !sameText(String(password || ''), String(list[name]))) {
+  if (!name || !(name in list) || !(await checkPassword(env, name, String(password || ''), list[name]))) {
     await new Promise((r) => setTimeout(r, 600));
     return fail(401, 'Нэр эсвэл нууц үг буруу байна');
   }
@@ -156,6 +157,16 @@ export default {
       if (request.method === 'GET' && path.startsWith('/img/')) return serveImage(env, decodeURIComponent(path.slice(5)));
       if (request.method === 'GET' && path === '/api/products') return listProducts(env);
       if (request.method === 'POST' && path === '/api/login') return login(request, env);
+      if (request.method === 'POST' && path === '/api/staff/forgot') {
+        const b = await request.json().catch(() => ({}));
+        try { const r = await requestStaffCode(env, b.user, users(env), tg.notify, mail); return json(r[1], r[0]); } catch (e) { return fail(502, e.message); }
+      }
+      if (request.method === 'POST' && path === '/api/staff/reset') {
+        const b = await request.json().catch(() => ({}));
+        const r = await resetStaffPassword(env, b.user, b.code, b.password, users(env));
+        if (r[0] !== 200) return json(r[1], r[0]);
+        return json({ token: await makeToken(env, r[1].user), user: r[1].user });
+      }
       if (request.method === 'POST' && path === '/api/t') return track(request, env).then((r) => { for (const [k, v] of Object.entries(CORS)) r.headers.set(k, v); return r; });
       if (request.method === 'GET' && path === '/api/erp') {
         return new Response(await getErp(env), { headers: { ...JSON_HEADERS, ...CORS, 'cache-control': 'public, max-age=300' } });

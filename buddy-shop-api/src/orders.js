@@ -73,7 +73,7 @@ export async function allow(env, key, limit, windowMs) {
   return true;
 }
 
-async function mail(env, to, subject, html, text) {
+export async function mail(env, to, subject, html, text) {
   if (!env.RESEND_API_KEY || !to) return;
   const res = await fetch('https://api.resend.com/emails', {
     method: 'POST',

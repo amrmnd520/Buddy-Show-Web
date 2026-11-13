@@ -51,3 +51,5 @@ bucket_name = "buddy-shop-images"
 # Optional vars: QPAY_URL (default https://merchant.qpay.mn; sandbox https://merchant-sandbox.qpay.mn),
 #   SITE_URL (where catalog.js is read for server-side prices; default https://amrmnd520.github.io/Buddy-Show-Web),
 #   BACKUP_NOTIFY (where backup alerts go; default ORDER_NOTIFY, then info@buddyshop.mn)
+
+# Optional var STAFF_RESET_TO: where admin-page password-recovery codes go (default info@buddyshop.mn; also sent to the linked Telegram chats)

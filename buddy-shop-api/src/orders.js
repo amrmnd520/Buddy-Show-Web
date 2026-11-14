@@ -3,6 +3,7 @@ import * as qpay from './qpay.js';
 import * as storepay from './storepay.js';
 import * as pocket from './pocket.js';
 import { getErp } from './erp.js';
+import { hasGift, issueGifts, syncGifts, giftMailHtml } from './gift.js';
 // Orders placed from the website cart (Cloudflare D1, table "orders").
 // A customer — signed in or not — sends the cart with name, phone and delivery
 // address. Staff are told by email (info@buddyshop.mn) and, if configured, Telegram;
@@ -27,7 +28,9 @@ export const STATUS = {
 };
 const COLS = { number: 'TEXT', name: 'TEXT', phone: 'TEXT', email: 'TEXT', address: 'TEXT', addr: 'TEXT',
   delivery: 'TEXT', staff_note: 'TEXT', updated_at: 'TEXT', updated_by: 'TEXT',
-  pay_method: 'TEXT', pay_key: 'TEXT', qpay_invoice: 'TEXT', sp_loan: 'TEXT', pk_invoice: 'TEXT', sp_phone: 'TEXT', paid_amount: 'INTEGER', paid_at: 'TEXT', checked_at: 'INTEGER', price_check: 'TEXT' };
+  pay_method: 'TEXT', pay_key: 'TEXT', qpay_invoice: 'TEXT', sp_loan: 'TEXT', pk_invoice: 'TEXT', sp_phone: 'TEXT', paid_amount: 'INTEGER', paid_at: 'TEXT', checked_at: 'INTEGER', price_check: 'TEXT',
+  // Онлайн бэлгийн карт: олгосон кодууд (JSON) ба ERP-д тавигдсан эсэх
+  gift_codes: 'TEXT', gift_synced: 'INTEGER' };
 let ready = false;
 
 export async function ensureOrders(env) {
@@ -42,6 +45,10 @@ export async function ensureOrders(env) {
   await env.DB.prepare('CREATE INDEX IF NOT EXISTS orders_created ON orders(created_at)').run();
   ready = true;
 }
+
+// Зөвхөн бэлгийн карт агуулсан захиалга: хаяг, хүргэлт шаардахгүй — код нь имэйл,
+// дэлгэцээр хүрнэ. Хэсэгчлэн карттай (карт + бараа) захиалга хэвийн хүргэлттэй хэвээр.
+const allGift = (items) => Array.isArray(items) && items.length > 0 && items.every((i) => /^GIFT-/i.test(String(i.code || '')));
 
 const clip = (s, n) => (s == null ? '' : String(s).trim().slice(0, n));
 const parse = (s, d) => { try { return JSON.parse(s) ?? d; } catch { return d; } };
@@ -121,22 +128,36 @@ export async function createOrder(request, env, customerId) {
   // left empty it falls back to the order's phone.
   const spPhone = clip(String(b.spPhone || '').replace(/[^\d+ ]/g, ''), 20);
   const email = clip(b.email, 120).toLowerCase(), note = clip(b.note, 500);
-  const delivery = b.delivery === 'pickup' ? 'pickup' : 'delivery';
-  const address = delivery === 'pickup' ? '' : clip(b.address, 400);
   if (!name) return [400, { error: 'Нэрээ оруулна уу' }];
   if (phone.replace(/\D/g, '').length < 8) return [400, { error: 'Утасны дугаараа зөв оруулна уу' }];
   if (email && !/^[^\s@]+@[^\s@]+\.[a-z]{2,}$/i.test(email)) return [400, { error: 'Имэйл хаяг буруу байна' }];
-  if (delivery === 'delivery' && address.length < 6) return [400, { error: 'Хүргэлтийн хаягаа оруулна уу' }];
   // prices are decided here, never by the browser: ERP price by the product's own code, otherwise
   // the price in the site catalog / staff edits
   let priced;
   try { priced = await serverPrices(env, items); } catch (e) { console.error('prices', e); return [503, { error: 'Үнэ шалгаж чадсангүй. Түр хүлээгээд дахин оролдоно уу.' }]; }
   if (priced.missing.length) return [400, { error: 'Сагсанд сайтаас хасагдсан бараа байна. Сагсаа шинэчлээд дахин оролдоно уу.' }];
+  // Код нь ЭНД (serverPrices) тавигдсаны дараа л итгэж болно — хөтөч юу ч бичиж
+  // явуулж болно. Иймээс бэлгийн картын шийдлүүдийг үнэ шалгасны дараа гаргана.
+  const giftOnly = allGift(items);
+  // Зөвхөн карт бол хаяг, хүргэлт хэрэггүй — код нь имэйл, дэлгэцээр хүрнэ
+  const delivery = giftOnly || b.delivery === 'pickup' ? 'pickup' : 'delivery';
+  const address = delivery === 'pickup' ? '' : clip(b.address, 400);
+  if (delivery === 'delivery' && address.length < 6) return [400, { error: 'Хүргэлтийн хаягаа оруулна уу' }];
   const changed = items.filter((i) => i.sitePrice !== undefined && i.sitePrice !== i.price).length;
   const priceCheck = changed ? `${changed} барааны үнэ хэрэглэгчийн харснаас өөр байсан — серверийн үнээр тооцов` : 'ok';
   const total = items.reduce((s, i) => s + i.price * i.qty, 0);
   const now = new Date().toISOString();
+  // Бэлгийн карт зөвхөн шууд төлбөрөөр. Хуваан төлөлтөөр (Storepay/Pocket) карт
+  // авбал мөнгийг нь тэр дор нь зарцуулаад зээлийг нь дараа төлөх боломж гарна —
+  // дэлгүүр зээлийн эрсдэлийг үнэгүй даана. «Дараа төлөх»-д ч карт олгогдохгүй
+  // (олгох нь зөвхөн мөнгө бүрэн орсон үед, markPaid дотор).
+  if (hasGift(items) && (b.pay === 'storepay' || b.pay === 'pocket')) {
+    return [400, { error: 'Бэлгийн картыг хуваан төлөлтөөр авах боломжгүй. QPay-ээр төлнө үү.' }];
+  }
   const payQ = b.pay === 'qpay' && qpay.enabled(env) && total > 0;
+  if (hasGift(items) && !payQ) {
+    return [400, { error: 'Бэлгийн картыг зөвхөн QPay-ээр төлж авна. QPay одоо ажиллахгүй байвал дэлгүүрт хандана уу.' }];
+  }
   const method = payQ ? 'qpay' : (OFFERED.has(b.pay) || (b.pay === 'pocket' && pocket.enabled(env)) ? b.pay : 'later');
   const payKey = crypto.randomUUID().replace(/-/g, '');
   const paySP = method === 'storepay' && storepay.enabled(env) && total > 0;
@@ -304,13 +325,25 @@ async function markPaid(env, row, amount, via = 'QPay') {
   if (!r.meta.changes) return; // already recorded
   const o = orderView({ ...row, paid_amount: amount, paid_at: now, status: row.status === 'new' && amount >= row.total ? 'paid' : row.status });
   const short = amount < o.total ? `\n⚠ Дутуу төлсөн: ${money(amount)} / ${money(o.total)}` : '';
+  // Бэлгийн карт: мөнгө бүрэн орсон тул одоо код үүсгэж, кассын ERP руу тавина.
+  // Дутуу төлсөн дээр карт олгохгүй — бүтэн дүнтэй карт гарч, мөнгө дутуу байх болно.
+  let cards = null;
+  if (amount >= row.total && hasGift(parse(row.items, []))) {
+    try { cards = await issueGifts(env, { ...row, paid_at: now }, via); }
+    catch (e) { console.error('gift issue', e.message); }
+  }
+  const giftTg = cards && cards.length
+    ? '\n🎁 ' + cards.map((c) => `${c.code} · ${money(c.amt)}`).join('\n🎁 ')
+    : (hasGift(parse(row.items, [])) && amount >= row.total ? '\n⚠ 🎁 Бэлгийн картын код үүссэнгүй — ERP дээрээс гараар олгоно уу!' : '');
   await Promise.allSettled([
-    telegram(env, tgText(o, `${via === 'QPay' ? '💳 Төлбөр орлоо' : (via === 'Pocket' ? '🟢 ' : '🟣 ') + via + '-ээр төлөгдлөө'} · ${o.number} · ${money(amount)}`) + short),
+    telegram(env, tgText(o, `${via === 'QPay' ? '💳 Төлбөр орлоо' : (via === 'Pocket' ? '🟢 ' : '🟣 ') + via + '-ээр төлөгдлөө'} · ${o.number} · ${money(amount)}`) + short + giftTg),
     mail(env, env.ORDER_NOTIFY || 'info@buddyshop.mn', `💳 Төлбөртэй захиалга ${o.number} — ${money(amount)} — ${o.name}`,
-      orderHtml(o, `${via}-ээр төлбөр орлоо: <b>${o.number}</b> · ${money(amount)}${short ? ' (дутуу!)' : ''}`), `${o.number} төлөгдлөө ${money(amount)}`),
+      orderHtml(o, `${via}-ээр төлбөр орлоо: <b>${o.number}</b> · ${money(amount)}${short ? ' (дутуу!)' : ''}`)
+        + (cards && cards.length ? giftMailHtml(cards, o.number) : ''), `${o.number} төлөгдлөө ${money(amount)}`),
     o.email ? mail(env, o.email, `Төлбөр баталгаажлаа — ${o.number} — Buddy Shop`,
-      orderHtml(o, `Сайн байна уу${o.name ? ', ' + esc(o.name) : ''}! Таны <b>${o.number}</b> захиалгын <b>${money(amount)}</b> төлбөр ${via === 'QPay' ? 'амжилттай орлоо' : via + '-ээр баталгаажлаа'}. ${o.delivery === 'pickup' ? 'Бараагаа дэлгүүрээс авах цагийг' : 'Хүргэлтийн цагийг'} манай ажилтан утсаар мэдэгдэнэ.`),
-      `${o.number} төлбөр ${money(amount)} орлоо. Баярлалаа!`) : null,
+      orderHtml(o, `Сайн байна уу${o.name ? ', ' + esc(o.name) : ''}! Таны <b>${o.number}</b> захиалгын <b>${money(amount)}</b> төлбөр ${via === 'QPay' ? 'амжилттай орлоо' : via + '-ээр баталгаажлаа'}. ${cards && cards.length && allGift(o.items) ? 'Бэлгийн картын код доор байна — дэлгүүрт үзүүлээд зарцуулж болно.' : o.delivery === 'pickup' ? 'Бараагаа дэлгүүрээс авах цагийг' : 'Хүргэлтийн цагийг'}${cards && cards.length && allGift(o.items) ? '' : ' манай ажилтан утсаар мэдэгдэнэ.'}`)
+        + (cards && cards.length ? giftMailHtml(cards, o.number) : ''),
+      `${o.number} төлбөр ${money(amount)} орлоо. Баярлалаа!${cards && cards.length ? '\n' + cards.map((c) => `${c.code} · ${money(c.amt)}`).join('\n') : ''}`) : null,
   ]);
 }
 
@@ -375,7 +408,17 @@ export async function payStatus(env, id, key, check) {
     try { await checkRow(env, row, false); } catch (e) { console.error('qpay check', e.message); }
     row = await env.DB.prepare('SELECT * FROM orders WHERE id = ?1').bind(id).first();
   }
-  return [200, { paid: !!row.paid_at && row.paid_amount >= row.total, short: !!row.paid_at && row.paid_amount < row.total, paidAmount: row.paid_amount || 0, total: row.total, status: row.status }];
+  // Бэлгийн карт: төлбөр орсон бол кодыг нь шууд хөтөч руу буцаана (баркод болж харагдана).
+  // ERP-д тавигдаагүй байвал энд ахиад оролдоно — хэрэглэгч дэлгэцээ хараад байх зуур засагдана.
+  let cards = null;
+  if (row.paid_at && row.gift_codes) {
+    try { cards = JSON.parse(row.gift_codes); } catch { cards = null; }
+    if (Array.isArray(cards) && cards.length && !row.gift_synced) {
+      try { await syncGifts(env, row); } catch (e) { console.error('gift resync', e.message); }
+    }
+  }
+  return [200, { paid: !!row.paid_at && row.paid_amount >= row.total, short: !!row.paid_at && row.paid_amount < row.total, paidAmount: row.paid_amount || 0, total: row.total, status: row.status,
+    cards: Array.isArray(cards) ? cards.map((c) => ({ code: c.code, amt: c.amt })) : null }];
 }
 
 // customer: «Захиалга цуцлах» / «Төлбөрийн арга солих» on the payment screen (only while unpaid)

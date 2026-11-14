@@ -30,6 +30,31 @@
       .catch(() => { box.textContent = 'QR ачаалж чадсангүй — «Pocket апп-аар төлөх» товчийг ашиглана уу.'; });
   }
   const goLabel = (m, sum) => m === 'qpay' && payOn ? `Захиалаад QPay-ээр төлөх · ${sum}` : BNPL[m] ? `${BNPL[m].name}-ээр захиалах · ${sum}` : `Захиалга илгээх · ${sum}`;
+  // ---- Бэлгийн карт ----
+  // Сагсанд бэлгийн карт байвал хуваан төлөлт санал болгохгүй: картын мөнгийг тэр дор нь
+  // зарцуулаад зээлийг нь дараа төлөх боломж гарна. Сервер ч үүнийг бас хориглодог.
+  const isGiftItem = (i) => /^GIFT-/i.test(String((i && i.code) || (findP(i && i.id) || {}).code || ''));
+  const cartHasGift = (l) => (l || []).some(isGiftItem);
+  const cartGiftOnly = (l) => (l || []).length > 0 && (l || []).every(isGiftItem);
+  // Төлбөр орсны дараа картын кодыг баркодтой нь харуулна — худалдан авагч зургийг
+  // хадгалж авч, дэлгүүрт уншуулна. Баркод уншигч утасны дэлгэцээс уншиж байгааг шалгасан.
+  function giftCards(cards) {
+    if (!Array.isArray(cards) || !cards.length) return '';
+    const bc = (code) => (typeof window.buddyBarcode === 'function'
+      ? window.buddyBarcode(code, { module: 2, height: 64 })
+      : `<div class="co-gc-code">${esc(code)}</div>`);
+    return `<div class="co-gc-wrap">
+      <h4>🎁 Таны бэлгийн карт${cards.length > 1 ? ` (${cards.length})` : ''}</h4>
+      ${cards.map((c) => `<div class="co-gc">
+        <div class="co-gc-top">BUDDY SHOP БЭЛГИЙН КАРТ</div>
+        <div class="co-gc-amt">${fmt(c.amt)}</div>
+        <div class="co-gc-bc">${bc(c.code)}</div>
+      </div>`).join('')}
+      <p class="co-gc-note">Дэлгэцийн зургийг хадгалж авна уу (эсвэл имэйлээ хараарай). Дэлгүүрт
+      баркодыг уншуулахад хүрэлцэнэ. Нэг картыг хэдэн ч удаа уншуулж болно — мөнгө нь
+      зарцуулсан хэмжээгээрээ л хасагдана, үлдэгдлээ дараа дахин хэрэглэж болно.</p>
+    </div>`;
+  }
   // spOn: Storepay credentials are set on the server, so the loan request reaches the customer's
   // app by itself. Without them the choice still works — it just becomes an order staff handle by
   // hand — and the wording below says which of the two the customer is getting.
@@ -58,6 +83,14 @@
 .co-hint button{background:none;border:0;padding:0;color:var(--blue,#203746);font:inherit;font-weight:700;text-decoration:underline;cursor:pointer}
 .co-err{background:#fdecea;color:#b42318;border-radius:5px;padding:8px 10px;font-size:13px;margin-top:10px}
 .co-ok{text-align:center;padding:10px 0}.co-ok .big{font-size:44px}.co-ok h3{margin:6px 0}.co-ok p{color:#5a6a72;line-height:1.5;font-size:14px}
+.co-gc-wrap{margin:16px 0 4px;text-align:left}
+.co-gc-wrap h4{margin:0 0 10px;font-size:15px;text-align:center}
+.co-gc{border:2px dashed #0a7a55;border-radius:12px;padding:12px;margin:0 0 12px;background:#fff}
+.co-gc-top{font-size:11px;letter-spacing:.1em;color:#6b7a80;text-align:center}
+.co-gc-amt{font-size:22px;font-weight:700;color:#0a7a55;text-align:center;margin:2px 0 8px}
+.co-gc-bc{overflow:hidden}
+.co-gc-code{font:600 20px/1.4 ui-monospace,Menlo,monospace;letter-spacing:.12em;text-align:center}
+.co-gc-note{font-size:12.5px;color:#5a6a72;line-height:1.5;margin:0}
 .co-back{background:none;border:0;padding:0;color:var(--blue,#203746);text-decoration:underline;cursor:pointer;font:inherit;font-size:13px;margin-bottom:6px}
 .co-sum{font-size:13px;color:#5a6a72;margin:4px 0 0}
 .co-which{display:grid;gap:8px;margin-top:10px}
@@ -158,12 +191,13 @@
     if (view === 'done' && done) {
       area.innerHTML = `<div class="co-ok"><div class="big">✅</div><h3>${done.paid ? `Төлбөр амжилттай — ${esc(done.number)}` : `Захиалга ${esc(done.number)} хүлээн авлаа`}</h3>
         ${done.paid
-          ? `<p><b>${fmt(done.paidAmount || done.total)}</b> ${done.payMethod === 'storepay' ? 'Storepay-ээр баталгаажлаа' : done.payMethod === 'pocket' ? 'Pocket-оор төлөгдлөө' : 'төлөгдлөө'}. Баярлалаа! Манай ажилтан <b>${esc(done.phone)}</b> дугаарт ${done.delivery === 'pickup' ? 'бараагаа авах цагийг' : 'хүргэлтийн цагийг'} мэдэгдэнэ.</p>`
+          ? `<p><b>${fmt(done.paidAmount || done.total)}</b> ${done.payMethod === 'storepay' ? 'Storepay-ээр баталгаажлаа' : done.payMethod === 'pocket' ? 'Pocket-оор төлөгдлөө' : 'төлөгдлөө'}. Баярлалаа!${cartGiftOnly(done.items) ? ' Картын код доор байна — ажилтны холбогдохыг хүлээх шаардлагагүй.' : ` Манай ажилтан <b>${esc(done.phone)}</b> дугаарт ${done.delivery === 'pickup' ? 'бараагаа авах цагийг' : 'хүргэлтийн цагийг'} мэдэгдэнэ.`}</p>`
           : BNPL[done.payMethod] ? `<p>Нийт <b>${fmt(done.total)}</b>. Та <b>${BNPL[done.payMethod].name}</b>-ээр хуваан төлөхийг сонгосон. Манай ажилтан удахгүй <b>${esc(done.spPhone || done.phone)}</b> дугаар руу ${BNPL[done.payMethod].name} нэхэмжлэх илгээнэ — ${BNPL[done.payMethod].name} апп дээрээ баталгаажуулна уу.</p>`
           : `<p>Нийт <b>${fmt(done.total)}</b>. Манай ажилтан удахгүй <b>${esc(done.phone)}</b> дугаарт холбогдож, төлбөр болон ${done.delivery === 'pickup' ? 'авах цагийг' : 'хүргэлтийг'} баталгаажуулна.</p>`}
         ${done.qpayError ? `<div class="co-err">${esc(done.qpayError)}</div>` : ''}
         ${done.storepayError ? `<div class="co-err">${esc(done.storepayError)}</div>` : ''}
         ${done.pocketError ? `<div class="co-err">${esc(done.pocketError)}</div>` : ''}
+        ${giftCards(done.cards)}
         ${done.email ? `<p>Баталгаажуулах имэйл ${esc(done.email)} хаяг руу илгээгдлээ.</p>` : ''}
         ${a ? '<p>Захиалга тань «Миний бүртгэл → Захиалгууд» хэсэгт хадгалагдлаа.</p>' : ''}
         <button class="co-go" data-co="close">Дэлгүүр үргэлжлүүлэх</button></div>`;
@@ -186,8 +220,11 @@
     // Pocket is not offered until its API is connected, so the only choices are QPay and Storepay.
     // With neither available the order still goes through as «pay later» and staff settle it.
     const pkOk = pkOn && spFits(total(l)); // PocketZero has the same 100,000₮–10,000,000₮ range
-    const canPay = (m) => (m === 'qpay' ? payOn : m === 'storepay' ? spOk : m === 'pocket' ? pkOk : false);
-    const pm = canPay(f.pay) ? f.pay : (payOn ? 'qpay' : (spOk ? 'storepay' : 'later'));
+    // Бэлгийн карт сагсанд байвал зөвхөн QPay: хуваан төлөлтөөр карт авч, мөнгийг нь
+    // шууд зарцуулаад зээлийг дараа төлөх боломжийг хаана (серверт ч хориотой).
+    const gift = cartHasGift(l), giftOnly = cartGiftOnly(l);
+    const canPay = (m) => (m === 'qpay' ? payOn : gift ? false : m === 'storepay' ? spOk : m === 'pocket' ? pkOk : false);
+    const pm = canPay(f.pay) ? f.pay : (payOn ? 'qpay' : (!gift && spOk ? 'storepay' : 'later'));
     const saved = savedAddr(a);
     const which = saved ? ((form && form.which) || 'saved') : 'new';
     const newSrc = { addr: form && form.which === 'new' && form.addr ? form.addr : (saved ? {} : ((a && a.addr) || {})) };
@@ -200,10 +237,12 @@
         <label for="co-phone">Утас *</label><input id="co-phone" type="tel" autocomplete="tel" maxlength="20" required value="${esc(f.phone)}" placeholder="9911xxxx">
         <label for="co-email">Имэйл ${a ? '' : '<small style="font-weight:400;color:#5a6a72">(баталгаажуулах имэйл авах бол)</small>'}</label>
         <input id="co-email" type="email" autocomplete="email" maxlength="120" value="${esc(f.email)}" ${a ? 'readonly' : ''}>
-        <div class="co-sec">Хүлээн авах</div>
+        ${giftOnly ? `<div class="co-sec">Хүлээн авах</div>
+        <p class="co-sum" style="text-align:left">🎁 Бэлгийн картын код төлбөр төлсний дараа тэр дор нь дэлгэцэн дээр баркодтойгоор гарна${f.email ? ` ба ${esc(f.email)} хаяг руу имэйлээр явна` : ''}. Хүргэлт, хаяг шаардахгүй.</p>`
+        : `<div class="co-sec">Хүлээн авах</div>
         <div class="co-ways"><label><input type="radio" name="co-way" value="delivery" ${f.delivery !== 'pickup' ? 'checked' : ''}> 🚚 Хүргэлтээр</label>
-          <label><input type="radio" name="co-way" value="pickup" ${f.delivery === 'pickup' ? 'checked' : ''}> 🏬 Дэлгүүрээс авах</label></div>
-        <div id="co-addr" style="${f.delivery === 'pickup' ? 'display:none' : ''}">
+          <label><input type="radio" name="co-way" value="pickup" ${f.delivery === 'pickup' ? 'checked' : ''}> 🏬 Дэлгүүрээс авах</label></div>`}
+        <div id="co-addr" style="${giftOnly || f.delivery === 'pickup' ? 'display:none' : ''}">
           ${saved ? `<div class="co-which">
             <label><input type="radio" name="co-which" value="saved" ${which === 'saved' ? 'checked' : ''}><span><b>📍 Бүртгэлтэй хаяг</b><small>${esc(a.address)}</small></span></label>
             <label><input type="radio" name="co-which" value="new" ${which === 'new' ? 'checked' : ''}><span><b>➕ Шинэ хаяг</b><small>Ажил, найзынх гэх мэт өөр хаяг руу хүргүүлэх</small></span></label></div>` : ''}
@@ -212,13 +251,17 @@
         <label for="co-note">Захиалгын тайлбар</label><textarea id="co-note" maxlength="500" placeholder="Хүргэлтийн цаг, бусад хүсэлт">${esc(f.note)}</textarea>
         <div class="co-sec">Төлбөр</div>
         <div class="co-which">${payOn ? `<label><input type="radio" name="co-pay" value="qpay" ${pm === 'qpay' ? 'checked' : ''}><span><b>💳 QPay-ээр одоо төлөх</b><small>QR код эсвэл банкны апп-аар шууд</small></span></label>` : ''}
-          <label><input type="radio" name="co-pay" value="storepay" ${pm === 'storepay' ? 'checked' : ''} ${spOk ? '' : 'disabled'}><span><b>🟣 Storepay — хуваан төлөх</b><small>${!spOk
+          <label><input type="radio" name="co-pay" value="storepay" ${pm === 'storepay' ? 'checked' : ''} ${spOk && !gift ? '' : 'disabled'}><span><b>🟣 Storepay — хуваан төлөх</b><small>${gift
+            ? 'Бэлгийн картыг хуваан төлөлтөөр авах боломжгүй'
+            : !spOk
             ? (total(l) < SP_MIN ? `Storepay ${fmt(SP_MIN)}-с дээш захиалгад л боломжтой — одоогоор ${fmt(total(l))}` : `Storepay ${fmt(SP_MAX)}-с дээш захиалга авдаггүй`)
             : spOn ? 'Storepay апп руу тань хүсэлт шууд очно — зөвшөөрөхөд л болно' : 'Ажилтан таны утас руу Storepay нэхэмжлэх илгээнэ'}</small></span></label>
-          ${pkOn ? `<label><input type="radio" name="co-pay" value="pocket" ${pm === 'pocket' ? 'checked' : ''} ${pkOk ? '' : 'disabled'}><span><b>🟢 Pocket — хуваан төлөх</b><small>${!pkOk
+          ${pkOn ? `<label><input type="radio" name="co-pay" value="pocket" ${pm === 'pocket' ? 'checked' : ''} ${pkOk && !gift ? '' : 'disabled'}><span><b>🟢 Pocket — хуваан төлөх</b><small>${gift
+            ? 'Бэлгийн картыг хуваан төлөлтөөр авах боломжгүй'
+            : !pkOk
             ? (total(l) < SP_MIN ? `Pocket ${fmt(SP_MIN)}-с дээш захиалгад л боломжтой — одоогоор ${fmt(total(l))}` : `Pocket ${fmt(SP_MAX)}-с дээш захиалга авдаггүй`)
             : 'Pocket апп-аараа QR уншуулж эсвэл шууд нээж төлнө (PocketZero)'}</small></span></label>` : ''}</div>
-        ${payOn || spOk ? '' : '<p class="co-sum" style="text-align:left">Энэ дүнд онлайн төлбөрийн сонголт одоогоор алга. Захиалгаа илгээвэл манай ажилтан холбогдож төлбөрийг тохирно.</p>'}
+        ${gift && !payOn ? '<p class="co-err" style="text-align:left">Бэлгийн картыг зөвхөн QPay-ээр төлж авна, QPay одоо ажиллахгүй байна. Сагснаасаа картыг хасах эсвэл дэлгүүрт хандана уу.</p>' : payOn || spOk ? '' : '<p class="co-sum" style="text-align:left">Энэ дүнд онлайн төлбөрийн сонголт одоогоор алга. Захиалгаа илгээвэл манай ажилтан холбогдож төлбөрийг тохирно.</p>'}
         <div id="co-sp" style="${pm === 'storepay' && spOn ? '' : 'display:none'}">
           <label for="co-spphone">Storepay-д бүртгэлтэй утас <small style="font-weight:400;color:#5a6a72">(өөр дугаар бол)</small></label>
           <input id="co-spphone" type="tel" maxlength="20" value="${esc(f.spPhone)}" placeholder="Хоосон бол дээрх утас руу очно">
@@ -236,8 +279,9 @@
     const which = savedAddr(a) && w ? w.value : 'new';
     return {
       name: g('co-name').trim(), phone: g('co-phone').trim(), email: g('co-email').trim(), note: g('co-note').trim(), spPhone: g('co-spphone').trim(),
-      delivery: way ? way.value : 'delivery', which, save: !!area.querySelector('#co-save')?.checked,
-      pay: (area.querySelector('input[name="co-pay"]:checked') || {}).value || (payOn ? 'qpay' : (spFits(total(lines())) ? 'storepay' : 'later')),
+      // Зөвхөн карттай сагсанд «Хүлээн авах» хэсэг зурагддаггүй — хаяг шаардахгүй pickup
+      delivery: way ? way.value : (cartGiftOnly(lines()) ? 'pickup' : 'delivery'), which, save: !!area.querySelector('#co-save')?.checked,
+      pay: (area.querySelector('input[name="co-pay"]:checked') || {}).value || (payOn ? 'qpay' : (!cartHasGift(lines()) && spFits(total(lines())) ? 'storepay' : 'later')),
       addr: which === 'saved' ? { ...a.addr } : (acc() && area.querySelector('#co-new') ? acc().readAddr(area.querySelector('#co-new')) : {}),
     };
   }
@@ -340,7 +384,7 @@
       const d = await r.json().catch(() => ({}));
       if (d.paid) {
         clearInterval(pollTimer);
-        done = { ...paying.order, paid: true, paidAmount: d.paidAmount }; paying = null; view = 'done';
+        done = { ...paying.order, paid: true, paidAmount: d.paidAmount, cards: d.cards || null }; paying = null; view = 'done';
         acc() && acc().get() && acc().reload().catch(() => {});
       } else if (d.short) {
         clearInterval(pollTimer);

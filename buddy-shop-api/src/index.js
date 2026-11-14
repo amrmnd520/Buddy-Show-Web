@@ -14,6 +14,7 @@ import { posAuthed, posInvoice, posCheck, posCancel, posLoan, posLoanCheck,
 import { createOrder, listOrders, updateOrder, qpayCallback, storepayCallback, pocketWebhook, payStatus, staffCheck, customerCancel, mail } from './orders.js';
 import { customerId, requestCode, verifyCode, passwordLogin, getAccount, updateAccount, deleteAccount, listCustomers, pruneCodes, staffResetCode } from './customers.js';
 import { runBackup, listBackups, getBackupFile, backupNotice, latestText } from './backup.js';
+import { sweepGifts } from './gift.js';
 
 const JSON_HEADERS = { 'content-type': 'application/json; charset=utf-8' };
 const CORS = {
@@ -381,6 +382,8 @@ export default {
     // Hourly while the shop is open (10:00–20:00 Ulaanbaatar). Named rather than left as the
     // fallback so that adding a cron later cannot silently turn into a price sync.
     if (event.cron === '0 2-12 * * *') {
+      // Supabase унасан үед ERP-д хүрээгүй үлдсэн онлайн бэлгийн картуудыг тавина
+      ctx.waitUntil(sweepGifts(env).then((n) => { if (n) console.log('gift sweep', n); }, (e) => console.error('gift sweep', e)));
       ctx.waitUntil(syncErp(env).then(
         async (r) => { console.log('erp sync', r); await env.IMAGES.delete('erp/error.json'); },
         (e) => saveErpError(env, e),

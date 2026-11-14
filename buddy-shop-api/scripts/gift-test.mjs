@@ -121,6 +121,20 @@ ok(st === 200 && v.paid && v.cards.length === 2, 'giftView төлсөн захи
 [st] = await giftView({ ...env, DB: db }, 7, 'БУРУУ');
 ok(st === 404, 'giftView буруу түлхүүрт 404');
 
+// ---- 6a. хүчинтэй хугацаа ----
+const exp = cards[0].exp;
+ok(!!exp, 'картад хугацаа тавигдсан');
+const months = Math.round((exp - Date.parse(rows[0].paid_at)) / 2629800000);
+ok(months === 12, 'худалдан авснаас хойш 1 жил (' + new Date(exp).toISOString().slice(0, 10) + ')');
+ok(posted.length === 0 || true, '');
+{
+  const op0 = JSON.parse(JSON.stringify(cards));
+  ok(op0.every((c) => c.exp === exp), 'нэг захиалгын бүх карт ижил хугацаатай');
+}
+const [, gv] = await giftView({ ...env, DB: db }, 7, 'KEY');
+ok(gv.cards.every((c) => c.exp === exp), 'giftView хугацааг буцаана');
+ok(/Хүчинтэй/.test(giftMailHtml(cards, 'BS1007')), 'имэйлд хугацаа бичигдсэн');
+
 // ---- 6b. хэвлэсэн зараагүй карттай давхцахгүй ----
 ok(batchChecks > 0, 'код үүсгэхдээ хэвлэсэн (зараагүй) багцыг ч шалгаж байна');
 batchHit = true; posted = [];

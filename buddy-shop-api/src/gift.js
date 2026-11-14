@@ -37,6 +37,16 @@ function newCode() {
   return 'BS-' + out; // BS-XXXX-XXXX
 }
 
+// Хүчинтэй хугацаа: худалдан авснаас хойш 1 жил — цаасан карт дээр хэвлэгддэгтэй
+// яг адил. ERP нь `exp`-ийг хүндэтгэнэ: хугацаа дуусахад мөнгө арилахгүй, зөвхөн
+// төлбөрт хэрэглэх нь хаагдаж, админ зөвшөөрвөл нээгдэнэ.
+const GIFT_MONTHS = 12;
+function expAt(iso) {
+  const d = new Date(iso);
+  d.setMonth(d.getMonth() + GIFT_MONTHS);
+  return d.getTime();
+}
+
 function sb(env) {
   const url = String(env.SUPABASE_URL || '').replace(/\/+$/, '');
   const key = env.SUPABASE_KEY;
@@ -133,7 +143,8 @@ export async function issueGifts(env, row, via = 'QPay') {
   const cards = [];
   for (const g of gifts) {
     const qty = Math.min(20, Math.max(1, Math.round(Number(g.qty) || 1)));
-    for (let n = 0; n < qty; n++) cards.push({ code: await freeCode(env), amt: Math.round(Number(g.price)), name: String(g.name || '') });
+    const exp = expAt(row.paid_at || new Date().toISOString());
+    for (let n = 0; n < qty; n++) cards.push({ code: await freeCode(env), amt: Math.round(Number(g.price)), name: String(g.name || ''), exp });
   }
 
   // Эхлээд D1 — хэрэглэгчийн эрх хаана ч алдагдахгүй байх ёстой
@@ -171,6 +182,7 @@ export async function syncGifts(env, row, via = 'QPay') {
         t: Date.parse(t),
         user: 'Онлайн',
         shift: null,              // кассын ээлжид биш — мөнгө нь онлайнаар орсон
+        exp: c.exp || expAt(t),   // карт дээр хэвлэгддэгтэй адил 1 жил
         note: `Онлайн ${number}${row.name ? ' · ' + String(row.name).slice(0, 40) : ''}`,
         pays: [{ m: payM, app: null, amt: c.amt }],
       },
@@ -213,7 +225,7 @@ export async function giftView(env, id, key) {
   if (!row.gift_synced) { try { await syncGifts(env, row); } catch (e) { console.error('gift view sync', e.message); } }
   return [200, {
     paid: true, number: row.number || `BS${1000 + row.id}`,
-    cards: cards.map((c) => ({ code: c.code, amt: c.amt })),
+    cards: cards.map((c) => ({ code: c.code, amt: c.amt, exp: c.exp || null })),
   }];
 }
 
@@ -226,6 +238,7 @@ export function giftMailHtml(cards, number) {
       <div style="font-size:13px;color:#666;letter-spacing:.08em">BUDDY SHOP БЭЛГИЙН КАРТ</div>
       <div style="font-size:26px;font-weight:700;letter-spacing:.12em;margin:8px 0">${c.code}</div>
       <div style="font-size:20px;font-weight:600;color:#0a6">${money(c.amt)}</div>
+      ${c.exp ? `<div style="font-size:12px;color:#666;margin-top:6px">Хүчинтэй: ${new Date(c.exp).toLocaleDateString('en-CA')} хүртэл</div>` : ''}
     </div>`).join('')}
     <p style="font-size:13px;color:#666">Баркодтой хувилбарыг худалдан авалтын дэлгэцээс хадгалж авч болно.
     Дэлгүүр: Улаанбаатар · <a href="https://www.buddyshop.mn">buddyshop.mn</a></p>

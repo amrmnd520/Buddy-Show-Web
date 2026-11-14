@@ -41,12 +41,14 @@ function fakeDB(rows) {
 
 // ---- хуурамч Supabase ----
 let posted = [];
+let batchChecks = 0, batchHit = false;
 let supaDown = false;
 const realFetch = globalThis.fetch;
 globalThis.fetch = async (url, init = {}) => {
   const u = String(url);
   if (!u.includes('supabase')) return realFetch(url, init);
   if (supaDown) return new Response('down', { status: 503 });
+  if (u.includes('kind=eq.giftBatch')) { batchChecks++; return Response.json(batchHit ? [{ id: 'x' }] : []); }
   if (u.includes('/rest/v1/ops?select=id&kind=eq.gift')) return Response.json([]); // код чөлөөтэй
   if (u.includes('/rest/v1/ops') && init.method === 'POST') {
     posted.push(...JSON.parse(init.body));
@@ -118,6 +120,17 @@ let [st, v] = await giftView({ ...env, DB: db }, 7, 'KEY');
 ok(st === 200 && v.paid && v.cards.length === 2, 'giftView төлсөн захиалгын картыг буцаана');
 [st] = await giftView({ ...env, DB: db }, 7, 'БУРУУ');
 ok(st === 404, 'giftView буруу түлхүүрт 404');
+
+// ---- 6b. хэвлэсэн зараагүй карттай давхцахгүй ----
+ok(batchChecks > 0, 'код үүсгэхдээ хэвлэсэн (зараагүй) багцыг ч шалгаж байна');
+batchHit = true; posted = [];
+const rows3 = [{ id: 11, number: 'BS1011', total: 100000, paid_amount: 100000, paid_at: new Date().toISOString(),
+  pay_key: 'K3', created_at: new Date().toISOString(),
+  items: JSON.stringify([{ id: 990000001, code: 'GIFT-100K', name: 'G', price: 100000, qty: 1 }]) }];
+const db3 = fakeDB(rows3);
+const c3 = await issueGifts({ ...env, DB: db3 }, rows3[0]);
+ok(c3 && c3.length === 1, 'давхцал гарсан ч код олгогдлоо (дахин үүсгээд)');
+batchHit = false;
 
 // ---- 7. имэйл ----
 const html = giftMailHtml(cards, 'BS1007');

@@ -66,9 +66,27 @@ async function sbFetch(env, path, init = {}) {
 // Ийм код аль хэдийн байгаа эсэх. 28^8 ≈ 3.8·10^11 тул давхцал бараг боломжгүй,
 // гэхдээ давхцвал ERP-ийн applyOp тэр картыг ЧИМЭЭГҮЙ хаядаг (нэг код хоёр удаа
 // олгогдохгүй) — хэрэглэгч төлбөр төлчихөөд картгүй үлдэнэ. Тиймээс шалгана.
+// Хоёр газар шалгана:
+//   kind=gift      — аль хэдийн олгогдсон карт
+//   kind=giftBatch — хэвлэлийн газарт өгсөн, хараахан зараагүй карт. Эдгээр нь
+//                    ERP-ийн S.gcards дотор сууж байгаа бөгөөс давхцвал тэр
+//                    хэвлэсэн карт онлайн картын мөнгийг өмчилж, зарагдахаа болино.
 async function taken(env, code) {
-  const rows = await sbFetch(env, `/rest/v1/ops?select=id&kind=eq.gift&data->>code=eq.${encodeURIComponent(code)}&limit=1`);
-  return Array.isArray(rows) && rows.length > 0;
+  const c = encodeURIComponent(code);
+  const q = [
+    `/rest/v1/ops?select=id&kind=eq.gift&data->>code=eq.${c}&limit=1`,
+    // giftBatch-ийн data.codes нь массив тул jsonb «агуулсан эсэх» шалгалт
+    `/rest/v1/ops?select=id&kind=eq.giftBatch&data->codes=cs.${encodeURIComponent(JSON.stringify([code]))}&limit=1`,
+  ];
+  for (const path of q) {
+    // Хоёр дахь шалгалт PostgREST дээр алдвал олголтыг зогсоохгүй — давхцал
+    // 28^8 ≈ 3.8·10^11-д нэг тул эхний шалгалт дангаараа ч хангалттай.
+    let rows;
+    try { rows = await sbFetch(env, path); }
+    catch (e) { if (path === q[0]) throw e; console.error('gift batch check', e.message); continue; }
+    if (Array.isArray(rows) && rows.length) return true;
+  }
+  return false;
 }
 
 async function freeCode(env) {

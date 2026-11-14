@@ -46,14 +46,14 @@
   /* Онлайн бэлгийн карт нь БЭЛЭГ: худалдан авагч өөртөө биш, өөр хүнд өгнө.
      Тиймээс хүлээн авагч нээхэд «Танд бэлэг ирлээ, Батаас» гээд мессежийг нь
      уншина. Хэнээс/мессеж хоосон бол тэр хэсэг нь гарахгүй, энгийн карт болно. */
-  function giftCards(cards, from, msg) {
+  function giftCards(cards, from, to, msg) {
     if (!Array.isArray(cards) || !cards.length) return '';
     const bc = (code) => (typeof window.buddyBarcode === 'function'
       ? window.buddyBarcode(code, { module: 2, height: 64, label: false })
       : '');
     return `<div class="co-gc-wrap">
       ${cards.map((c, i) => `<div class="co-gc" data-gcard="${i}">
-        ${from ? `<div class="co-gc-from"><b>🎁 Танд бэлэг ирлээ</b><span>${esc(from)}-ээс</span></div>
+        ${from ? `<div class="co-gc-from"><b>🎁 ${to ? esc(to) + ', танд' : 'Танд'} бэлэг ирлээ</b><span>${esc(from)}-ээс</span></div>
           ${msg ? `<div class="co-gc-msg">«${esc(msg)}»</div>` : ''}` : ''}
         ${giftArt(c.amt) ? `<img class="co-gc-art" src="${giftArt(c.amt)}" alt="">` : ''}
         <div class="co-gc-body">
@@ -74,7 +74,7 @@
 
   /* Картыг нэг PNG болгож татна. Гадны сан ашиглахгүй: зураг нь нэг эх үүсвэрээс
      (buddyshop.mn) ирдэг тул canvas бохирдохгүй, toDataURL ажиллана. */
-  async function giftSave(card, from, msg) {
+  async function giftSave(card, from, to, msg) {
     const W = 1080, pad = 48;
     const art = giftArt(card.amt);
     let img = null;
@@ -93,7 +93,7 @@
       x.fillStyle = '#0a7a55'; x.fillRect(0, 0, W, headH);
       x.fillStyle = '#fff'; x.textAlign = 'center';
       x.font = '700 44px -apple-system, "Segoe UI", Roboto, sans-serif';
-      x.fillText('🎁 Танд бэлэг ирлээ', W / 2, 62);
+      x.fillText('🎁 ' + (to ? to + ', танд' : 'Танд') + ' бэлэг ирлээ', W / 2, 62);
       x.font = '30px -apple-system, "Segoe UI", Roboto, sans-serif';
       x.globalAlpha = .88; x.fillText(from + '-ээс', W / 2, 108); x.globalAlpha = 1;
       y = headH;
@@ -285,7 +285,7 @@
         ${done.qpayError ? `<div class="co-err">${esc(done.qpayError)}</div>` : ''}
         ${done.storepayError ? `<div class="co-err">${esc(done.storepayError)}</div>` : ''}
         ${done.pocketError ? `<div class="co-err">${esc(done.pocketError)}</div>` : ''}
-        ${giftCards(done.cards, done.giftFrom, done.giftMsg)}
+        ${giftCards(done.cards, done.giftFrom, done.giftTo, done.giftMsg)}
         ${done.email ? `<p>Баталгаажуулах имэйл ${esc(done.email)} хаяг руу илгээгдлээ.</p>` : ''}
         ${a ? '<p>Захиалга тань «Миний бүртгэл → Захиалгууд» хэсэгт хадгалагдлаа.</p>' : ''}
         <button class="co-go" data-co="close">Дэлгүүр үргэлжлүүлэх</button></div>`;
@@ -303,7 +303,7 @@
     // checkout form
     const f = form || {
       name: a ? a.name : '', phone: a ? a.phone : '', email: a ? a.email : '', delivery: 'delivery', note: '', save: false, pay: 'qpay', spPhone: '',
-      giftFrom: '', giftMsg: '',
+      giftFrom: '', giftTo: '', giftMsg: '',
     };
     const spOk = spFits(total(l));
     // Pocket is not offered until its API is connected, so the only choices are QPay and Storepay.
@@ -339,6 +339,8 @@
             ${a ? `<label class="co-check"><input type="checkbox" id="co-save" ${(saved ? f.save : true) ? 'checked' : ''}> ${saved ? 'Энэ хаягийг үндсэн хаягаа болгож хадгалах' : 'Энэ хаягийг бүртгэлдээ хадгалах'}</label>` : ''}</div></div>
         ${gift ? `<div class="co-sec">Бэлгийн мессеж</div>
         <p class="co-sum" style="text-align:left;margin:0 0 8px">Хүлээн авагч нээхэд «🎁 Танд бэлэг ирлээ» гээд доорх нэр, мессеж харагдана. Хоосон орхивол энгийн карт болно.</p>
+        <label for="co-gto">Хэнд <small style="font-weight:400;color:#5a6a72">(заавал биш)</small></label>
+        <input id="co-gto" maxlength="40" value="${esc(f.giftTo)}" placeholder="Хүлээн авагчийн нэр">
         <label for="co-gfrom">Хэнээс</label><input id="co-gfrom" maxlength="40" value="${esc(f.giftFrom)}" placeholder="${esc(f.name || 'Таны нэр')}">
         <label for="co-gmsg">Мессеж <small style="font-weight:400;color:#5a6a72">(заавал биш)</small></label>
         <textarea id="co-gmsg" maxlength="200" placeholder="Төрсөн өдрийн мэнд! Дуртай зүйлээ сонгоорой.">${esc(f.giftMsg)}</textarea>` : ''}
@@ -373,7 +375,7 @@
     const which = savedAddr(a) && w ? w.value : 'new';
     return {
       name: g('co-name').trim(), phone: g('co-phone').trim(), email: g('co-email').trim(), note: g('co-note').trim(), spPhone: g('co-spphone').trim(),
-      giftFrom: g('co-gfrom').trim(), giftMsg: g('co-gmsg').trim(),
+      giftFrom: g('co-gfrom').trim(), giftTo: g('co-gto').trim(), giftMsg: g('co-gmsg').trim(),
       // Зөвхөн карттай сагсанд «Хүлээн авах» хэсэг зурагддаггүй — хаяг шаардахгүй pickup
       delivery: way ? way.value : (cartGiftOnly(lines()) ? 'pickup' : 'delivery'), which, save: !!area.querySelector('#co-save')?.checked,
       pay: (area.querySelector('input[name="co-pay"]:checked') || {}).value || (payOn ? 'qpay' : (!cartHasGift(lines()) && spFits(total(lines())) ? 'storepay' : 'later')),
@@ -393,7 +395,7 @@
     const sv = e.target.closest('[data-gcsave]'); if (!sv || !done || !done.cards) return;
     const card = done.cards[+sv.dataset.gcsave]; if (!card) return;
     const was = sv.textContent; sv.disabled = true; sv.textContent = 'Бэлтгэж байна…';
-    try { await giftSave(card, done.giftFrom, done.giftMsg); }
+    try { await giftSave(card, done.giftFrom, done.giftTo, done.giftMsg); }
     catch (err) { sv.textContent = 'Болсонгүй — дэлгэцийн зургаа хадгалаарай'; setTimeout(() => { sv.textContent = was; sv.disabled = false; }, 3000); return; }
     sv.textContent = was; sv.disabled = false;
   });
@@ -433,7 +435,7 @@
       const headers = { 'content-type': 'application/json' };
       const t = acc() && acc().token(); if (t) headers.authorization = 'Bearer ' + t;
       const res = await fetch(API + '/api/orders', { method: 'POST', headers, body: JSON.stringify({
-        items: l, name: v.name, phone: v.phone, email: v.email, delivery: v.delivery, address, addr: v.delivery === 'pickup' ? null : v.addr, note: v.note, spPhone: v.spPhone, giftFrom: v.giftFrom, giftMsg: v.giftMsg, pay: v.pay === 'qpay' && !payOn ? (spFits(total(l)) ? 'storepay' : 'later') : v.pay }) });
+        items: l, name: v.name, phone: v.phone, email: v.email, delivery: v.delivery, address, addr: v.delivery === 'pickup' ? null : v.addr, note: v.note, spPhone: v.spPhone, giftFrom: v.giftFrom, giftTo: v.giftTo, giftMsg: v.giftMsg, pay: v.pay === 'qpay' && !payOn ? (spFits(total(l)) ? 'storepay' : 'later') : v.pay }) });
       const d = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(d.error || ('Алдаа ' + res.status));
       form = null;
@@ -489,7 +491,7 @@
       const d = await r.json().catch(() => ({}));
       if (d.paid) {
         clearInterval(pollTimer);
-        done = { ...paying.order, paid: true, paidAmount: d.paidAmount, cards: d.cards || null, giftFrom: d.giftFrom || null, giftMsg: d.giftMsg || null }; paying = null; view = 'done';
+        done = { ...paying.order, paid: true, paidAmount: d.paidAmount, cards: d.cards || null, giftFrom: d.giftFrom || null, giftTo: d.giftTo || null, giftMsg: d.giftMsg || null }; paying = null; view = 'done';
         acc() && acc().get() && acc().reload().catch(() => {});
       } else if (d.short) {
         clearInterval(pollTimer);

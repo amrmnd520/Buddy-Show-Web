@@ -30,7 +30,9 @@ const COLS = { number: 'TEXT', name: 'TEXT', phone: 'TEXT', email: 'TEXT', addre
   delivery: 'TEXT', staff_note: 'TEXT', updated_at: 'TEXT', updated_by: 'TEXT',
   pay_method: 'TEXT', pay_key: 'TEXT', qpay_invoice: 'TEXT', sp_loan: 'TEXT', pk_invoice: 'TEXT', sp_phone: 'TEXT', paid_amount: 'INTEGER', paid_at: 'TEXT', checked_at: 'INTEGER', price_check: 'TEXT',
   // Онлайн бэлгийн карт: олгосон кодууд (JSON) ба ERP-д тавигдсан эсэх
-  gift_codes: 'TEXT', gift_synced: 'INTEGER' };
+  gift_codes: 'TEXT', gift_synced: 'INTEGER',
+  // Бэлгийн мессеж: хэнээс ирснийг, юу бичсэнийг хүлээн авагч харна
+  gift_from: 'TEXT', gift_msg: 'TEXT' };
 let ready = false;
 
 export async function ensureOrders(env) {
@@ -128,6 +130,9 @@ export async function createOrder(request, env, customerId) {
   // left empty it falls back to the order's phone.
   const spPhone = clip(String(b.spPhone || '').replace(/[^\d+ ]/g, ''), 20);
   const email = clip(b.email, 120).toLowerCase(), note = clip(b.note, 500);
+  // Бэлгийн карт нь бэлэг — хүлээн авагч «Танд бэлэг ирлээ, Батаас» гэж харна.
+  // Хоосон орхивол худалдан авагчийн нэрээр орлуулна.
+  const giftFrom = clip(b.giftFrom, 40), giftMsg = clip(b.giftMsg, 200);
   if (!name) return [400, { error: 'Нэрээ оруулна уу' }];
   if (phone.replace(/\D/g, '').length < 8) return [400, { error: 'Утасны дугаараа зөв оруулна уу' }];
   if (email && !/^[^\s@]+@[^\s@]+\.[a-z]{2,}$/i.test(email)) return [400, { error: 'Имэйл хаяг буруу байна' }];
@@ -190,11 +195,12 @@ export async function createOrder(request, env, customerId) {
     }
   }
 
-  const r = await env.DB.prepare(`INSERT INTO orders (customer_id, created_at, updated_at, status, total, items, note, name, phone, email, address, addr, delivery, pay_method, pay_key, price_check, sp_phone)
-    VALUES (?1, ?2, ?2, 'new', ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)`)
+  const r = await env.DB.prepare(`INSERT INTO orders (customer_id, created_at, updated_at, status, total, items, note, name, phone, email, address, addr, delivery, pay_method, pay_key, price_check, sp_phone, gift_from, gift_msg)
+    VALUES (?1, ?2, ?2, 'new', ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17)`)
     .bind(customerId || 0, now, total, JSON.stringify(items), note, name, phone, email, address,
       b.addr && typeof b.addr === 'object' ? JSON.stringify(b.addr).slice(0, 1000) : null, delivery, method, payKey, priceCheck,
-      loanPhone === phone ? null : loanPhone).run();
+      loanPhone === phone ? null : loanPhone,
+      hasGift(items) ? (giftFrom || name) : null, hasGift(items) ? (giftMsg || null) : null).run();
   const id = r.meta.last_row_id, number = `BS${1000 + id}`;
   await env.DB.prepare('UPDATE orders SET number = ?1 WHERE id = ?2').bind(number, id).run();
   const row = { id, number, created_at: now, status: 'new', total, items: JSON.stringify(items), name, phone, email, address, delivery, note,
@@ -339,10 +345,10 @@ async function markPaid(env, row, amount, via = 'QPay') {
     telegram(env, tgText(o, `${via === 'QPay' ? '💳 Төлбөр орлоо' : (via === 'Pocket' ? '🟢 ' : '🟣 ') + via + '-ээр төлөгдлөө'} · ${o.number} · ${money(amount)}`) + short + giftTg),
     mail(env, env.ORDER_NOTIFY || 'info@buddyshop.mn', `💳 Төлбөртэй захиалга ${o.number} — ${money(amount)} — ${o.name}`,
       orderHtml(o, `${via}-ээр төлбөр орлоо: <b>${o.number}</b> · ${money(amount)}${short ? ' (дутуу!)' : ''}`)
-        + (cards && cards.length ? giftMailHtml(cards, o.number) : ''), `${o.number} төлөгдлөө ${money(amount)}`),
+        + (cards && cards.length ? giftMailHtml(cards, o.number, row.gift_from, row.gift_msg) : ''), `${o.number} төлөгдлөө ${money(amount)}`),
     o.email ? mail(env, o.email, `Төлбөр баталгаажлаа — ${o.number} — Buddy Shop`,
       orderHtml(o, `Сайн байна уу${o.name ? ', ' + esc(o.name) : ''}! Таны <b>${o.number}</b> захиалгын <b>${money(amount)}</b> төлбөр ${via === 'QPay' ? 'амжилттай орлоо' : via + '-ээр баталгаажлаа'}. ${cards && cards.length && allGift(o.items) ? 'Бэлгийн картын код доор байна — дэлгүүрт үзүүлээд зарцуулж болно.' : o.delivery === 'pickup' ? 'Бараагаа дэлгүүрээс авах цагийг' : 'Хүргэлтийн цагийг'}${cards && cards.length && allGift(o.items) ? '' : ' манай ажилтан утсаар мэдэгдэнэ.'}`)
-        + (cards && cards.length ? giftMailHtml(cards, o.number) : ''),
+        + (cards && cards.length ? giftMailHtml(cards, o.number, row.gift_from, row.gift_msg) : ''),
       `${o.number} төлбөр ${money(amount)} орлоо. Баярлалаа!${cards && cards.length ? '\n' + cards.map((c) => `${c.code} · ${money(c.amt)}`).join('\n') : ''}`) : null,
   ]);
 }
@@ -418,7 +424,8 @@ export async function payStatus(env, id, key, check) {
     }
   }
   return [200, { paid: !!row.paid_at && row.paid_amount >= row.total, short: !!row.paid_at && row.paid_amount < row.total, paidAmount: row.paid_amount || 0, total: row.total, status: row.status,
-    cards: Array.isArray(cards) ? cards.map((c) => ({ code: c.code, amt: c.amt })) : null }];
+    cards: Array.isArray(cards) ? cards.map((c) => ({ code: c.code, amt: c.amt, exp: c.exp || null })) : null,
+    giftFrom: row.gift_from || null, giftMsg: row.gift_msg || null }];
 }
 
 // customer: «Захиалга цуцлах» / «Төлбөрийн арга солих» on the payment screen (only while unpaid)

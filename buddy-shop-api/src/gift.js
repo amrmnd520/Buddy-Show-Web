@@ -229,9 +229,15 @@ export async function giftView(env, id, key) {
   }];
 }
 
-export function giftMailHtml(cards, number) {
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+export function giftMailHtml(cards, number, from, msg) {
   const money = (n) => Number(n || 0).toLocaleString('en-US') + '₮';
   return `<div style="font:15px/1.6 -apple-system,Segoe UI,Roboto,sans-serif;color:#1a1a1a">
+    ${from ? `<div style="background:#0a7a55;color:#fff;border-radius:12px 12px 0 0;padding:14px 16px;text-align:center">
+      <div style="font-size:17px;font-weight:700">🎁 Танд бэлэг ирлээ</div>
+      <div style="font-size:13px;opacity:.85">${esc(from)}-ээс</div></div>
+      ${msg ? `<div style="background:#f6f8f8;padding:14px 16px;text-align:center;font-style:italic;color:#2d3f3c">«${esc(msg)}»</div>` : ''}` : ''}
     <p>Таны <b>${number}</b> захиалгын бэлгийн карт бэлэн боллоо. Доорх кодыг дэлгүүрт үзүүлээд
     худалдан авалтаа төлнө үү — бүтэн дүнгээр нь ч, хэсэгчлэн ч зарцуулж болно.</p>
     ${cards.map((c) => `<div style="border:2px dashed #0a6;border-radius:12px;padding:16px;margin:14px 0;text-align:center">

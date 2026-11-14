@@ -42,6 +42,22 @@
     });
   }
 
+  /* Баркодыг canvas дээр зурахад хэрэгтэй: [{x,w}] модулиудын жагсаалт.
+     Зургаар хадгалах товч үүгээр PNG үүсгэнэ — гадны сан хэрэггүй. */
+  window.buddyBarcodeBars = function (text, module, quiet) {
+    var m = Math.max(1, module || 2), q = quiet == null ? 10 : quiet;
+    var vals = values(text), out = [], x = q * m;
+    for (var i = 0; i < vals.length; i++) {
+      var pat = P[vals[i]];
+      for (var j = 0; j < pat.length; j++) {
+        var w = (+pat[j]) * m;
+        if (j % 2 === 0) out.push({ x: x, w: w });
+        x += w;
+      }
+    }
+    return { bars: out, width: x + q * m };
+  };
+
   window.buddyBarcode = function (text, opts) {
     opts = opts || {};
     var m = Math.max(1, opts.module || 2);        // нэг модулийн өргөн, px

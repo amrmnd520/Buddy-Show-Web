@@ -46,6 +46,13 @@
       const p = Object.assign({}, item);
       delete p._updatedAt; delete p._updatedBy;
       const i = byId.get(Number(p.id));
+      // Бэлгийн картыг зөвхөн catalog.js эзэмшинэ. Хуучирсан ажилтны засвар
+      // шинэ зураг, тайлбарыг дарахаас сэргийлнэ (ангиллыг каталогоос авна,
+      // эс бөгөөс засвар дээр ангиллаа сольж энэ хамгаалалтаас мултарна).
+      if (i != null && products[i].category === 'Бэлгийн карт') {
+        window.BUDDY_OVERRIDES.delete(Number(p.id));
+        continue;
+      }
       if (i == null) fresh.push(p); else products[i] = p;
     }
     products = fresh.reverse().concat(products).filter(p => !gone.has(Number(p.id)));

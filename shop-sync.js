@@ -36,6 +36,9 @@
 
   /* ---------- load staff changes on top of catalog.js ---------- */
   function applyOverlay(data) {
+    // Аль бараа ажилтны засвартай вэ — админ самбарт «Каталог руу буцаах»
+    // товчийг зөвхөн тэдэн дээр гаргана
+    window.BUDDY_OVERRIDES = new Set((data.items || []).map(x => Number(x.id)));
     const gone = new Set((data.deleted || []).map(Number));
     const byId = new Map(products.map((p, i) => [Number(p.id), i]));
     const fresh = [];
@@ -101,7 +104,7 @@
     } else { failed = 0; setStatus(dirtyCount() ? 'saving' : 'saved'); }
   }
 
-  window.shopSync = { queue, flush };
+  window.shopSync = { queue, flush, token: () => token };
 
   // Pick up other staff members' changes when coming back to the page.
   document.addEventListener('visibilitychange', () => {

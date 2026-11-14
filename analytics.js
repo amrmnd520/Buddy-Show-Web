@@ -91,7 +91,11 @@
   }
 
   function tabBody() {
-    const d = data;
+    // Сервер хэсэгчилсэн өгөгдөл буцаавал ч унахгүй байх
+    const d = data || {};
+    for (const k of ['views', 'carts', 'searches', 'empty', 'cats', 'devs', 'refs', 'hours']) {
+      if (!Array.isArray(d[k])) d[k] = [];
+    }
     if (tab === 'products') {
       const max = Math.max(1, ...d.views.map(r => r.n));
       return d.views.length ? `<table class="an-table"><thead><tr><th>Бараа</th><th class="n">Үзсэн</th><th class="n">Хүн</th><th></th><th class="n">Үнэ</th><th class="n">Emart</th></tr></thead><tbody>
@@ -135,7 +139,7 @@
     else {
       const t = data.totals || {}, td = data.todayRow || {}, f = data.funnel || {};
       const daysRows = fillDays(data.daily || []);
-      const hours = Array.from({ length: 24 }, (_, h) => ({ hour: h, visits: (data.hours.find(x => x.hour === h) || {}).visits || 0 }));
+      const hours = Array.from({ length: 24 }, (_, h) => ({ hour: h, visits: ((data.hours || []).find(x => x.hour === h) || {}).visits || 0 }));
       const busiest = hours.reduce((a, b) => b.visits > a.visits ? b : a, hours[0]);
       body = `<div class="an-tiles">
           <div class="an-tile"><span>Өнөөдөр зочид</span><b>${num(td.visitors)}</b><small>${num(td.views)} бараа үзсэн · ${num(td.carts)} сагсанд</small></div>

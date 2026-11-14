@@ -115,6 +115,13 @@ async function saveProduct(request, env, id, user) {
   return json({ ok: true, id, updatedAt: now });
 }
 
+// Ажилтны засварын мөрийг хүснэгтээс бүрмөсөн арилгана — бараа алга болохгүй,
+// зүгээр л catalog.js-ийн үндсэн хувилбар руугаа эргэж ордог.
+async function resetProduct(env, id) {
+  const r = await env.DB.prepare('DELETE FROM products WHERE id = ?1').bind(id).run();
+  return json({ ok: true, id, removed: r.meta.changes || 0 });
+}
+
 async function deleteProduct(env, id, user) {
   const now = new Date().toISOString();
   await env.DB.prepare(
@@ -348,6 +355,10 @@ export default {
         const id = productId(m[1]);
         if (!id) return fail(400, 'ID буруу');
         if (request.method === 'PUT') return saveProduct(request, env, id, user);
+        // ?reset=1 — ажилтны засварыг БҮРМӨСӨН устгаж, catalog.js-ийн хувилбарыг
+        // сэргээнэ. Энгийн DELETE нь барааг нуудаг (deleted=1) бөгөөс энэ нь
+        // хуучирсан засвар каталогийг дарахаас сэргийлнэ.
+        if (request.method === 'DELETE' && url.searchParams.get('reset') === '1') return resetProduct(env, id);
         if (request.method === 'DELETE') return deleteProduct(env, id, user);
       }
       return fail(404, 'Not found');

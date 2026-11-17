@@ -124,3 +124,17 @@ the checkout page only reads our database (`GET /api/orders/:id/pay?k=`), and as
 
 Prices are always decided on the server: ERP price by the product's code (size code for size options), otherwise the
 price in staff edits (D1) or the site's catalog.js. What the browser sends is ignored.
+
+## Facebook / Instagram каталог (Meta Commerce Manager)
+
+Worker дээр `GET /feed/facebook.csv` хаяг байна. Энэ нь сайт дээрх бүх барааг (catalog.js + ажилтны засвар + ERP-ийн үнэ, үлдэгдэл) Meta-гийн каталогийн CSV болгож өгнө. 30 минут тутам шинэчлэгдэнэ.
+
+- Хаяг: `https://buddy-shop-api.taimenlodge.workers.dev/feed/facebook.csv`
+- Хэмжээтэй бараа (M, L, XL…) хэмжээ бүрээрээ тусдаа мөр болж, `item_group_id`-аар нэг бараанд нэгдэнэ.
+- ERP-д үлдэгдэл 0 бол `out of stock` гэж очно. Бэлгийн карт болон зураггүй бараа орохгүй.
+
+**Нэг удаа тохируулах:**
+1. `npx wrangler deploy` (энэ хавтаснаас).
+2. business.facebook.com/commerce → **Catalog** үүсгэх (төрөл: E-commerce) → Buddy Shop пэйжтэй холбох.
+3. Catalog → **Data sources** → **Data feed** → **Scheduled feed** → дээрх хаягийг тавина → давтамж: **Hourly** (эсвэл Daily) → валют: **MNT**.
+4. Хэдэн минутын дараа **Items** хэсэгт бараанууд гарч ирнэ. **Diagnostics** хэсэгт Meta татгалзсан бараа байвал харагдана.

@@ -16,6 +16,7 @@ import { customerId, requestCode, verifyCode, passwordLogin, getAccount, updateA
 import { runBackup, listBackups, getBackupFile, backupNotice, latestText } from './backup.js';
 import { sweepGifts } from './gift.js';
 import * as agent from './agent.js';
+import { facebookFeed } from './feed.js';
 
 const JSON_HEADERS = { 'content-type': 'application/json; charset=utf-8' };
 const CORS = {
@@ -165,6 +166,8 @@ export default {
       if (path === '/' || path === '/api/health') return json({ ok: true, service: 'buddy-shop-api' });
       if (request.method === 'GET' && path.startsWith('/img/')) return serveImage(env, decodeURIComponent(path.slice(5)));
       if (request.method === 'GET' && path === '/api/products') return listProducts(env);
+      // Meta Commerce Manager scheduled feed (Facebook / Instagram catalog)
+      if (request.method === 'GET' && path === '/feed/facebook.csv') return facebookFeed(env);
       if (request.method === 'POST' && path === '/api/login') return login(request, env);
       if (request.method === 'POST' && path === '/api/staff/forgot') {
         const b = await request.json().catch(() => ({}));

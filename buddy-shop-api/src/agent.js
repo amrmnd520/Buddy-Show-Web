@@ -47,6 +47,23 @@ async function sbAll(env, path, cap = 20000) {
 
 const num = (v) => (typeof v === 'number' ? v : Number(v) || 0);
 
+// Захиалгаар хийдэг нийлүүлэгчид. Эдгээрийн үлдэгдэл 0 байх нь ХЭВИЙН —
+// хүн ирэхэд нь хийдэг тул «дууссан, захиал» гэж сануулах нь утгагүй,
+// бас тайланг дүүргээд жинхэнэ чухал зүйлийг нуудаг.
+// Өөрчлөх: wrangler.toml дээр [vars] MADE_TO_ORDER = "Нэр1,Нэр2" гэж бичээд
+// дахин байршуулна. Хоосон мөр бичвэл хэнийг ч хасахгүй.
+const MADE_TO_ORDER_DEFAULT = ['Narantsogt', '2022 M.Narantsogt', '2023 Batmunkh Guide', 'Мышара'];
+
+function madeToOrder(env) {
+  const raw = env.MADE_TO_ORDER;
+  const list = raw == null
+    ? MADE_TO_ORDER_DEFAULT
+    : String(raw).split(',').map((x) => x.trim()).filter(Boolean);
+  return new Set(list.map((x) => x.toLowerCase()));
+}
+
+const isMadeToOrder = (p, set) => set.has(String(p.vendor || '').trim().toLowerCase());
+
 // Өдрийн борлуулалтын хурд. 90 хоног нь улирлын хэлбэлзлийг барих хангалттай
 // урт, харин 365 хоног нь хэтэрхий удаан хариу өгдөг — зуны бараа өвөл
 // "сайн зарагддаг" мэт харагдана. 90 хоногт огт зарагдаагүйг нь жилээр нь үзнэ.
@@ -97,23 +114,29 @@ export async function digest(env) {
     .slice(0, 12);
 
   // Хурдан зарагдаж байгаад ДУУССАН: хамгийн шууд алдагдал.
+  // Захиалгаар хийдэг нийлүүлэгчийг хасна — тэдний 0 нь хэвийн.
+  const mto = madeToOrder(env);
   const out = prods
-    .filter((p) => num(p.stock) <= 0 && num(p.q90) >= 2)
+    .filter((p) => !isMadeToOrder(p, mto) && num(p.stock) <= 0 && num(p.q90) >= 2)
     .map((p) => ({ sku: p.sku, name: p.name, brand: p.brand, vendor: p.vendor,
                    q90: num(p.q90), last: p.last_sold }))
     .sort((a, b) => b.q90 - a.q90)
     .slice(0, 12);
 
   return { weeks: w, top, stalled, out,
-           counts: { products: prods.length, sold30: sold30.length } };
+           counts: { products: prods.length, sold30: sold30.length,
+                     madeToOrder: [...mto].length } };
 }
 
 // ── Захиалгын санал ──────────────────────────────────────────────────────
 // target: хэдэн хоногийн нөөцтэй байхыг хүсэж байна (анхдагч 120 хоног).
 export async function reorder(env, target = 120) {
   const prods = await products(env);
+  const mto = madeToOrder(env);
   const rows = [];
+  let skipped = 0;
   for (const p of prods) {
+    if (isMadeToOrder(p, mto)) { skipped++; continue; }   // захиалгаар хийдэг
     const v = velocity(p);
     if (v <= 0) continue;                       // огт зарагддаггүй бараа
     if (num(p.q365) < 2) continue;              // санамсаргүй нэг удаагийн зарагдалт
@@ -158,6 +181,7 @@ export async function reorder(env, target = 120) {
     totalLines: rows.length,
     goneCount: gone.length,
     lowCount: low.length,
+    skippedMadeToOrder: skipped,
     totalSpend: rows.reduce((a, r) => a + r.spend, 0),
     vendors: Object.values(byVendor).sort((a, b) => b.spend - a.spend),
   };
@@ -166,10 +190,14 @@ export async function reorder(env, target = 120) {
 // ── Брэндийн зураглал (шинэ бүтээгдэхүүн хайхад) ─────────────────────────
 export async function brands(env) {
   const prods = await products(env);
+  const mto = madeToOrder(env);
   const m = new Map();
   for (const p of prods) {
     const b = (p.brand || '').trim();
     if (!b) continue;
+    // Зөвхөн захиалгаар хийдэг нийлүүлэгчээс ирдэг брэнд (дотоодын ялаа
+    // уяач гэх мэт) вэбээс хайгаад олдохгүй — мөнгө, цаг дэмий өнгөрнө.
+    if (isMadeToOrder(p, mto)) { if (!m.has(b)) m.set(b, null); continue; }
     const x = m.get(b) || { brand: b, products: 0, stock: 0, q365: 0, skus: [] };
     x.products++;
     x.stock += num(p.stock);
@@ -179,6 +207,7 @@ export async function brands(env) {
   }
   return {
     brands: [...m.values()]
+      .filter(Boolean)                       // зөвхөн захиалгаар хийдэг брэнд хасагдана
       .sort((a, b) => b.q365 - a.q365)
       .map((x) => ({ ...x, skus: undefined, skuCount: x.skus.length })),
   };

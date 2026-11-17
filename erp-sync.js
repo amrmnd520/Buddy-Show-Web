@@ -58,6 +58,23 @@
         if (any) { if (low) { p.price = low; p.regularPrice = low; } p.stock = total; p.erpQty = total; n++; }
         continue;
       }
+      // Colour options (p.colorOptions = [{code, erpCode}]): each colour gets its own ERP price and
+      // stock; the product shows the total. A colour without erpCode is tried as "<p.code> <colour no.>"
+      // ("AR-S 4.5g" + "13 RSLG" → "AR-S 4.5G 13").
+      if (Array.isArray(p.colorOptions) && p.colorOptions.length) {
+        const keyOf = o => {
+          const tries = [o.erpCode, p.code && o.code ? p.code + ' ' + String(o.code).split(' ')[0] : ''].filter(Boolean).map(norm);
+          for (const k of tries) { if (erp[k]) return k; const k2 = k.replace(/(\d)\.0G\b/, '$1G'); if (erp[k2]) return k2; }
+          return null;
+        };
+        let any = false, total = 0, low = 0;
+        for (const o of p.colorOptions) {
+          const k = keyOf(o); if (!k) continue;
+          const [pr, q] = erp[k]; any = true; o.stock = q; total += q;
+          if (pr > 0) { o.price = pr; if (!low || pr < low) low = pr; }
+        }
+        if (any) { if (low) { p.price = low; p.regularPrice = low; } p.stock = total; p.erpQty = total; n++; continue; }
+      }
       const hits = codesOf(p).map(c => erp[c]).filter(Boolean);
       if (!hits.length) continue;
       const price = (hits.find(h => h[0] > 0) || [0])[0];

@@ -291,6 +291,11 @@ export default {
             return json(await agent.reorder(env, t), 200, nost);
           }
           if (path === '/api/agent/brands') return json(await agent.brands(env), 200, nost);
+          if (path === '/api/agent/find') {
+            const q2 = url.searchParams.get('q') || '';
+            const n = Math.min(40, Number(url.searchParams.get('limit')) || 15);
+            return json(await agent.find(env, q2, n), 200, nost);
+          }
           if (path === '/api/agent/brand') {
             const b = url.searchParams.get('name') || '';
             if (!b) return fail(400, 'name дутуу байна');

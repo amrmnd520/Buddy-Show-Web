@@ -213,6 +213,31 @@ export async function brands(env) {
   };
 }
 
+// ── Бараа хайх (Telegram дээрх асуултад хариулахад) ─────────────────────
+// Нэр, код, брэнд, ангилал, нийлүүлэгчээр нь хайна. Үгсийг тус тусад нь
+// тулгана — «simms вейдер» гэвэл хоёулаа агуулсан мөр л гарна.
+export async function find(env, q, limit = 15) {
+  const words = String(q || '').toLowerCase().split(/\s+/).filter(Boolean);
+  if (!words.length) return { query: q, items: [] };
+  const prods = await products(env);
+  const hay = (p) => [p.sku, p.name, p.brand, p.category, p.vendor]
+    .map((x) => String(x || '').toLowerCase()).join(' ');
+  const hits = prods.filter((p) => { const h = hay(p); return words.every((w) => h.includes(w)); });
+  // Хамгийн их зарагддаг нь эхэнд — хэрэглэгч ихэвчлэн тэрийг асууж байдаг
+  hits.sort((a, b) => num(b.q365) - num(a.q365));
+  return {
+    query: q,
+    found: hits.length,
+    items: hits.slice(0, limit).map((p) => ({
+      sku: p.sku, name: p.name, brand: p.brand, category: p.category,
+      vendor: p.vendor, stock: num(p.stock), price: num(p.price), cost: num(p.cost),
+      q30: num(p.q30), q90: num(p.q90), q365: num(p.q365),
+      cover: Number.isFinite(coverDays(p)) ? Math.round(coverDays(p)) : null,
+      last_sold: p.last_sold,
+    })),
+  };
+}
+
 // Нэг брэндийн бүх нэр, код — шинэ бүтээгдэхүүнийг тулгахад агент ашиглана.
 export async function brandSkus(env, brand) {
   const prods = await products(env);

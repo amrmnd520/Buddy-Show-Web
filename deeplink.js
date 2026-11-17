@@ -25,7 +25,10 @@
   });
 
   // ?p=123 or #p=123 on arrival
-  const want = new URLSearchParams(location.search).get('p') || (location.hash.match(/^#p=(\d+)/) || [])[1];
+  // products merged into another one: the old link opens the merged product
+  const MERGED = { 657663: 657660 };
+  let want = new URLSearchParams(location.search).get('p') || (location.hash.match(/^#p=(\d+)/) || [])[1];
+  if (want && MERGED[want]) want = String(MERGED[want]);
   if (!want) return;
   let tries = 0;
   (function go() {

@@ -73,7 +73,7 @@ dialog.size-dlg{width:min(860px,96vw);max-height:90vh;border:0;border-radius:10p
     box.querySelector('.erp-stock-note')?.remove();
     const out = typeof cur.qty === 'number' && cur.qty <= 0;
     if (!out && typeof cur.qty === 'number' && cur.qty > 0) box.querySelector('.price')?.insertAdjacentHTML('beforebegin', `<div class="erp-stock-note">✓ ${esc(cur.label)}: ${cur.qty} ширхэг үлдсэн</div>`);
-    if (out) box.querySelector('.price')?.insertAdjacentHTML('beforebegin', `<div class="erp-nostock-note">Энэ ${p.sizeTitle === 'Сонголт' ? 'сонголт' : 'хэмжээ'} үлдэгдэлгүй</div>`);
+    if (out) box.querySelector('.price')?.insertAdjacentHTML('beforebegin', `<div class="erp-nostock-note">Энэ ${({'Сонголт':'сонголт','Өнгө':'өнгө'})[p.sizeTitle] || 'хэмжээ'} үлдэгдэлгүй</div>`);
     box.querySelectorAll('.add').forEach(b => {
       if (!/Сагсанд|Үлдэгдэлгүй/.test(b.textContent) || b.getAttribute('onclick') === 'setDetailCover()') return;
       b.textContent = out ? 'Үлдэгдэлгүй' : 'Сагсанд нэмэх +'; b.disabled = out; b.classList.toggle('erp-nostock', out);

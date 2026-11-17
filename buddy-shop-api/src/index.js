@@ -15,6 +15,7 @@ import { createOrder, listOrders, updateOrder, qpayCallback, storepayCallback, p
 import { customerId, requestCode, verifyCode, passwordLogin, getAccount, updateAccount, deleteAccount, listCustomers, pruneCodes, staffResetCode } from './customers.js';
 import { runBackup, listBackups, getBackupFile, backupNotice, latestText } from './backup.js';
 import { sweepGifts } from './gift.js';
+import * as agent from './agent.js';
 
 const JSON_HEADERS = { 'content-type': 'application/json; charset=utf-8' };
 const CORS = {
@@ -272,6 +273,31 @@ export default {
         if (!storepay.enabled(env)) return json({ ok: false, error: 'Storepay түлхүүр тавиагүй байна' }, 200, { 'cache-control': 'no-store' });
         try { await storepay.ping(env); return json({ ok: true }, 200, { 'cache-control': 'no-store' }); }
         catch (e) { return json({ ok: false, error: e.message }, 200, { 'cache-control': 'no-store' }); }
+      }
+
+      // ---- агент ----
+      // buddy-shop-bot Worker энэ эцэс цэгээс өгөгдлөө авна. AGENT_TOKEN нь хоёр
+      // Worker-т ижил утгатай. Эндээс гарах өгөгдөлд ӨРТӨГ бий тул нийтэд
+      // хэзээ ч гаргахгүй — зөвхөн токентой, эсвэл нэвтэрсэн ажилтанд.
+      if (path.startsWith('/api/agent/')) {
+        const at = request.headers.get('x-agent-token') || '';
+        const byToken = !!env.AGENT_TOKEN && sameText(at, env.AGENT_TOKEN);
+        if (!byToken && !(await whoIs(request, env))) return fail(401, 'Дахин нэвтэрнэ үү');
+        const nost = { 'cache-control': 'no-store' };
+        try {
+          if (path === '/api/agent/digest') return json(await agent.digest(env), 200, nost);
+          if (path === '/api/agent/reorder') {
+            const t = Number(url.searchParams.get('days')) || 120;
+            return json(await agent.reorder(env, t), 200, nost);
+          }
+          if (path === '/api/agent/brands') return json(await agent.brands(env), 200, nost);
+          if (path === '/api/agent/brand') {
+            const b = url.searchParams.get('name') || '';
+            if (!b) return fail(400, 'name дутуу байна');
+            return json(await agent.brandSkus(env, b), 200, nost);
+          }
+        } catch (e) { return fail(502, e.message); }
+        return fail(404, 'Not found');
       }
 
       // ---- database backups ----

@@ -126,10 +126,17 @@ export async function reorder(env, target = 120) {
       stock: num(p.stock), cover: Math.round(cover),
       q30: num(p.q30), q90: num(p.q90), q365: num(p.q365),
       need, cost: num(p.cost), spend: need * num(p.cost),
+      // Өдөрт алдаж буй борлуулалт. Нөөц дууссан бол бүтэн, байгаа бол 0.
+      lost: num(p.stock) <= 0 ? Math.round(v * num(p.price)) : 0,
+      perDay: Math.round(v * 100) / 100,
       last: p.last_sold,
     });
   }
-  rows.sort((a, b) => a.cover - b.cover);
+  // ⚠ Эрэмбийг НӨӨЦ ДУУСАХ ХОНОГООР хийж болохгүй: аль хэдийн 0 болсон бараа
+  // бүгд 0 дээр тэнцэж, дундаас нь санамсаргүй сонгогддог. Тиймээс өдөрт
+  // алдаж байгаа борлуулалтаар (хурд × үнэ) эрэмбэлнэ — хамгийн их мөнгө
+  // алдуулж байгаа нь дээр гарна.
+  rows.sort((a, b) => b.lost - a.lost || a.cover - b.cover);
   const byVendor = {};
   for (const r of rows) {
     const k = r.vendor;
@@ -137,10 +144,20 @@ export async function reorder(env, target = 120) {
     byVendor[k].lines++;
     byVendor[k].spend += r.spend;
   }
+  // Хоёр өөр яаралтай байдал: аль хэдийн ДУУССАН (өдөр бүр мөнгө алдаж
+  // байна) ба ДУУСАХ ГЭЖ БУЙ (одоо захиалбал амжина). Нэг жагсаалтад
+  // хольбол эхнийх нь хоёр дахийг нь дардаг.
+  const gone = rows.filter((r) => r.stock <= 0);
+  const low = rows.filter((r) => r.stock > 0).sort((a, b) => a.cover - b.cover);
   return {
     target,
     rows: rows.slice(0, 60),
+    gone: gone.slice(0, 12),
+    low: low.slice(0, 12),
+    lostPerDay: gone.reduce((a, r) => a + r.lost, 0),
     totalLines: rows.length,
+    goneCount: gone.length,
+    lowCount: low.length,
     totalSpend: rows.reduce((a, r) => a + r.spend, 0),
     vendors: Object.values(byVendor).sort((a, b) => b.spend - a.spend),
   };

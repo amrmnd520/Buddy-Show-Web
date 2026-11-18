@@ -5,6 +5,9 @@
 //   catalog.js (base list)  →  staff edits/additions/deletions (D1)  →  ERP price + stock (Supabase, hourly)
 // Commerce Manager → Catalog → Data sources → Data feed → Scheduled feed: paste this URL, hourly or daily.
 //
+// Only products in stock are listed: a sold-out item drops out of the feed (and, because the feed is a
+// replace schedule, out of the catalogue) and comes back by itself when the ERP shows stock again.
+//
 // Nothing private is exposed: only what the public site already shows (name, price, stock state, photos).
 
 import { getErp } from './erp.js';
@@ -120,6 +123,7 @@ async function build(env) {
         const price = Math.round((hits.find((h) => h[0] > 0) || [0])[0] || Number(s.price) || Number(p.price) || 0);
         if (!(price > 0)) continue;
         const qty = hits.length ? hits.reduce((t, h) => t + h[1], 0) : (Number(s.qty) || Number(p.stock) || 0);
+        if (!(qty > 0)) continue; // sold out: left off Facebook until it is back in stock
         out.push(row({ ...base, id: `${p.id}-${s.label}`, item_group_id: String(p.id), size: s.label, price, qty }));
         count++;
       }
@@ -131,6 +135,7 @@ async function build(env) {
     const price = Math.round(erpPrice || Number(p.price) || 0);
     if (!(price > 0)) continue;
     const qty = hits.length ? hits.reduce((t, h) => t + h[1], 0) : Math.max(0, Number(p.stock) || 0);
+    if (!(qty > 0)) continue; // sold out: left off Facebook until it is back in stock
     out.push(row({ ...base, id: String(p.id), item_group_id: '', size: '', price, qty }));
     count++;
   }

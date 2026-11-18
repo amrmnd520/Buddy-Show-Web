@@ -38,6 +38,9 @@
 
   // Called by shop-sync.js after staff changes are applied and BEFORE it takes its
   // "saved" snapshot, so ERP values are never mistaken for unsaved staff edits.
+  // A product the ERP does not know is not sold online: shown as «Үлдэгдэлгүй» until it gets an ERP
+  // code (admin «Барааны код», or erp-links.js). Gift cards are not stock items.
+  const notInErp = p => { if (p && p.category !== 'Бэлгийн карт') { p.stock = 0; p.erpQty = 0; } };
   window.applyErp = async function (list) {
     await load();
     if (!erp) return 0;
@@ -56,6 +59,7 @@
           if (h[0] > 0 && (!low || h[0] < low)) low = h[0];
         }
         if (any) { if (low) { p.price = low; p.regularPrice = low; } p.stock = total; p.erpQty = total; n++; }
+        else notInErp(p);
         continue;
       }
       // Colour options (p.colorOptions = [{code, erpCode}]): each colour gets its own ERP price and
@@ -76,7 +80,7 @@
         if (any) { if (low) { p.price = low; p.regularPrice = low; } p.stock = total; p.erpQty = total; n++; continue; }
       }
       const hits = codesOf(p).map(c => erp[c]).filter(Boolean);
-      if (!hits.length) continue;
+      if (!hits.length) { notInErp(p); continue; }
       const price = (hits.find(h => h[0] > 0) || [0])[0];
       const qty = hits.reduce((s, h) => s + h[1], 0);
       if (price > 0) { p.price = price; p.regularPrice = price; }

@@ -55,8 +55,11 @@
       }
       if (i == null) fresh.push(p); else products[i] = p;
     }
-    products = fresh.reverse().concat(products).filter(p => !gone.has(Number(p.id)));
+    products = fresh.reverse().concat(products).filter(p => !gone.has(Number(p.id)) && !REMOVED.has(Number(p.id)));
   }
+
+  // duplicates removed from the shop on 2026-11-18 (one copy of each kept); their old staff copies stay out too
+  const REMOVED = new Set([726180, 907161, 907160, 728224, 324536, 195273, 147151, 143288]);
 
   function redraw() {
     const y = window.scrollY;

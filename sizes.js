@@ -231,6 +231,8 @@ dialog.size-dlg{width:min(860px,96vw);max-height:90vh;border:0;border-radius:10p
   st.textContent = `#admin .admin-panel:has(#adminrows) thead th:nth-child(11){width:170px}
 #admin .admin-panel:has(#adminrows) thead th:nth-child(12){width:120px}
 #adminrows td:nth-child(11),#adminrows td:nth-child(12){overflow:visible!important;vertical-align:top}
+#adminrows td:nth-child(10){white-space:normal!important}
+#adminrows td:nth-child(10) button{display:block;width:100%;margin:0 0 6px!important}
 #adminrows td:nth-child(11) button,#adminrows td:nth-child(12) button{width:100%;padding:6px 4px;font-size:12px;font-weight:700;cursor:pointer}
 #adminrows .adm-sz{font-size:11px;color:#5a6a72;margin-top:4px;line-height:1.4}
 #admin .admin-panel:has(#adminrows) table{min-width:1290px}`;

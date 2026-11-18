@@ -7,7 +7,7 @@
      Purchase          order completed (the "✅" screen), once per order number
    Signed-in staff are not tracked. Loaded last, so it wraps the final versions of the shop functions. */
 (() => {
-  const PIXEL_ID = '1075678152144865';
+  const PIXEL_ID = '2270696457123299';
   const isStaff = () => { try { return !!localStorage.getItem('buddyshop_api_token'); } catch (e) { return false; } };
   if (isStaff()) return;
 

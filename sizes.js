@@ -253,6 +253,33 @@ dialog.size-dlg{width:min(860px,96vw);max-height:90vh;border:0;border-radius:10p
     });
     return r;
   };
+
+  // Products merged into one with options. A staff page left open from before the merge can save
+  // the old single-colour copy back (it happened on 2026-11-17): put the merge back, and if staff are
+  // signed in, let shop-sync save the fixed copy so the order system sees the options too.
+  const byId = id => (typeof products !== 'undefined' ? products : []).find(x => Number(x.id) === Number(id));
+  const MERGED = {
+    657660: { name: '3D CICADA 3.3CM 3.5G FLOATING', code: '61987 | 61989', sizeTitle: 'Өнгө', subcategory: 'Воблер',
+      sizes: [{ label: 'Black', code: '61987', price: 36000 }, { label: 'Green', code: '61989', price: 36000 }],
+      addImages: ['assets/products/657663.jpg', 'assets/zc/c7e0cb8f-9005-4b9b-aa31-1281c65f74b8.webp', 'assets/zc/add7b8b4-dbad-4b6f-84fe-a3597cf9f36a.webp', 'assets/zc/64c36434-2007-47cf-a6f5-4af687361869.webp'] },
+  };
+  document.addEventListener('buddy:synced', async () => {
+    let fixed = [];
+    for (const [id, m] of Object.entries(MERGED)) {
+      const p = byId(id); if (!p || (Array.isArray(p.sizes) && p.sizes.length)) continue;
+      const { addImages, ...rest } = m;
+      Object.assign(p, JSON.parse(JSON.stringify(rest)));
+      const imgs = Array.isArray(p.sourceImages) ? p.sourceImages : [];
+      p.sourceImages = [...new Set([...imgs, ...addImages])];
+      if (p.shortDescription && /BLACK$/i.test(p.shortDescription)) p.shortDescription = m.name;
+      fixed.push(p);
+    }
+    if (!fixed.length) return;
+    try { if (window.applyErp) await window.applyErp(fixed); } catch (e) {}
+    try { render(true); } catch (e) {}
+    try { const d = document.getElementById('product-detail'); if (d && d.open && fixed.some(p => Number(p.id) === Number(detailProductId))) openProduct(detailProductId); } catch (e) {}
+    try { if (window.shopSync && window.shopSync.token()) window.shopSync.queue(); } catch (e) {}
+  });
   window.addEventListener('sizes-saved', () => { try { adminRender(); } catch (e) {} });
   try { adminRender(); } catch (e) {}
 })();

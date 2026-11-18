@@ -10,7 +10,7 @@
   ];
   const DEFAULTS = {
     announcement: { show: true, text: 'BUDDY SHOP · QPAY-ЭЭР ШУУД ТӨЛНӨ' },
-    logo: { image: '', height: 48, text: '▲ BUDDY SHOP', subtitle: 'FISHING & OUTDOOR', showText: true },
+    logo: { image: 'assets/logo-mark.png', height: 60, text: 'BUDDY SHOP', subtitle: 'FISHING & OUTDOOR', showText: true },
     hero: { image: '', title: 'ЗАГАСЧЛАЛ БОЛ ЗӨВХӨН ХОББИ БИШ.\nАМЬДРАЛЫН ХЭВ МАЯГ.', titleSize: 14, button: 'БҮТЭЭГДЭХҮҮН ҮЗЭХ ↗', showButton: true, height: 420, darkness: 65, align: 'left', position: 55 },
     menu: { showCategories: true, items: [] },
     layout: { order: SECTIONS.map(s => s[0]), hidden: [], columns: 4 },
@@ -68,12 +68,16 @@ body{background:${c.background}}
 .hero p{font-size:${Number(h.titleSize)}px;line-height:1.35}
 .logo img{height:${Number(L.height)}px;width:auto;display:block}
 .logo.has-img{display:flex;align-items:center;gap:12px}
+@media(max-width:600px){.logo img{height:${Math.min(42, Number(L.height))}px}}
 .nav .nav-custom{background:transparent;color:white;border:0;white-space:nowrap;padding:6px 12px;font:inherit;font-size:20px;text-decoration:none;cursor:pointer}
 @media(max-width:900px){.nav .nav-custom{font-size:15px}}
 @media(min-width:1000px){.catalog-results .grid{grid-template-columns:repeat(${Number(S.layout.columns)},minmax(0,1fr))}}`;
     const ann = document.querySelector('.announcement');
     if (ann) { ann.style.display = S.announcement.show ? '' : 'none'; ann.textContent = S.announcement.text; }
     const logo = document.querySelector('.header .logo');
+    // the old «▲» mark is now the logo image (also clears it from settings saved in a browser before)
+    if (!L.image) L.image = 'assets/logo-mark.png';
+    L.text = String(L.text || '').replace(/^\s*▲\s*/, '');
     if (logo) {
       logo.classList.toggle('has-img', !!L.image);
       logo.innerHTML = (L.image ? `<img src="${esc(L.image)}" alt="${esc(L.text || 'Лого')}">` : '') +

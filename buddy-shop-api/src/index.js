@@ -146,7 +146,9 @@ async function uploadImage(request, env, url, user) {
 }
 
 async function serveImage(env, key) {
-  if (!key || key.includes('..')) return new Response('Not found', { status: 404, headers: CORS });
+  // Only uploaded product photos are public. The same bucket holds the nightly database backup
+  // (customers, phones, costs), the ERP catalogue and settings — those must never be served here.
+  if (!key || key.includes('..') || !/^products\/[\w./-]+\.(jpe?g|png|webp|gif)$/i.test(key)) return new Response('Not found', { status: 404, headers: CORS });
   const obj = await env.IMAGES.get(key);
   if (!obj) return new Response('Not found', { status: 404, headers: CORS });
   const headers = new Headers(CORS);

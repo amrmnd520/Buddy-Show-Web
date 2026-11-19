@@ -70,6 +70,7 @@ function view(row) {
     posBy: row.pos_by || null,
     // Хүргэлт. handedAt байвал хүргэгч авсан — үгүй бол дэлгүүрт хэвтэж байна.
     courier: row.courier || null,
+    courierPhone: row.courier_phone || null,
     track: row.track || null,
     handedAt: row.handed_at || null,
     handedBy: row.handed_by || null,
@@ -164,15 +165,17 @@ export async function posRecordOrder(env, id, body) {
 export async function posHandoff(env, id, body) {
   await ensureOrders(env);
   const courier = clip(body && body.courier, 80);
+  const phone = clip(String((body && body.phone) || '').replace(/[^\d+\- ]/g, ''), 20);
   const track = clip(body && body.track, 60);
   const user = clip(body && body.user, 60) || 'Касс';
   const row = await env.DB.prepare('SELECT * FROM orders WHERE id = ?1').bind(id).first();
   if (!row) return [404, { error: 'Захиалга олдсонгүй' }];
   if (!row.pos_no) return [409, { error: 'Кассанд бүртгэгдээгүй захиалга' }];
   const now = new Date().toISOString();
-  await env.DB.prepare(`UPDATE orders SET courier = ?1, track = ?2, handed_at = ?3, handed_by = ?4,
-      updated_at = ?5, updated_by = ?4 WHERE id = ?6`)
-    .bind(courier || null, track || null, courier ? now : null, courier ? user : null, now, id).run();
+  await env.DB.prepare(`UPDATE orders SET courier = ?1, courier_phone = ?2, track = ?3,
+      handed_at = ?4, handed_by = ?5, updated_at = ?6, updated_by = ?5 WHERE id = ?7`)
+    .bind(courier || null, courier ? (phone || null) : null, track || null,
+      courier ? now : null, courier ? user : null, now, id).run();
   const o = await env.DB.prepare('SELECT * FROM orders WHERE id = ?1').bind(id).first();
   return [200, { ok: true, order: view(o) }];
 }

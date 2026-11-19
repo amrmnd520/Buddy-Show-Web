@@ -38,7 +38,7 @@ const COLS = { number: 'TEXT', name: 'TEXT', phone: 'TEXT', email: 'TEXT', addre
   pos_no: 'TEXT', pos_at: 'TEXT', pos_by: 'TEXT',
   // Хүргэлт: хэнд, ямар кодоор, хэзээ өгсөн. handed_at байгаа эсэх нь
   // «дэлгүүрт хүлээж байгаа» ба «замд яваа» хоёрыг ялгана.
-  courier: 'TEXT', track: 'TEXT', handed_at: 'TEXT', handed_by: 'TEXT' };
+  courier: 'TEXT', courier_phone: 'TEXT', track: 'TEXT', handed_at: 'TEXT', handed_by: 'TEXT' };
 let ready = false;
 
 export async function ensureOrders(env) {

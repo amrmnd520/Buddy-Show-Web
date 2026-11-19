@@ -85,10 +85,11 @@ export async function posOrders(env) {
   await ensureOrders(env);
   const weekAgo = new Date(Date.now() - 7 * 864e5).toISOString();
 
+  // Шинэ нь дээрээ: кассчин сая ирсэн захиалгыг хайж доошоо гүйлгэх ёсгүй.
   const paid = await rows(env, `SELECT * FROM orders
       WHERE paid_at IS NOT NULL AND paid_amount >= total AND total > 0
         AND pos_no IS NULL AND status <> 'cancelled'
-      ORDER BY paid_at ASC LIMIT 100`);
+      ORDER BY paid_at DESC LIMIT 100`);
 
   const pending = await rows(env, `SELECT * FROM orders
       WHERE paid_at IS NULL AND status IN ('new','confirmed') AND created_at >= ?1

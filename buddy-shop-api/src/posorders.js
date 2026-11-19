@@ -19,6 +19,15 @@ const parse = (s, d) => { try { return JSON.parse(s) ?? d; } catch { return d; }
 const clip = (s, n) => (s == null ? '' : String(s).trim().slice(0, n));
 const isGift = (i) => /^GIFT-/i.test(String(i.code || ''));
 
+// Төлбөр нь аль үйлчилгээгээр орсон бэ. markPaid() нь updated_by-д QPay /
+// Storepay / Pocket гэж бичдэг — ГЭХДЭЭ дараа нь ажилтан захиалгыг хөндвөл
+// тэр талбар ажилтны нэрээр дарагдана. Нэрийг төлбөрийн арга гэж дамжуулбал
+// баримт дээр «amarmend-ээр төлөгдсөн» гэж хэвлэгдэнэ. Иймээс танигдсан
+// үйлчилгээг л авч, бусдад нь захиалгын өөрийнх нь аргыг хэрэглэнэ.
+const GATEWAY = { QPay: 'QPay', Storepay: 'Storepay', Pocket: 'Pocket' };
+const BY_METHOD = { qpay: 'QPay', storepay: 'Storepay', pocket: 'Pocket' };
+const paidVia = (row) => GATEWAY[row.updated_by] || BY_METHOD[row.pay_method] || '';
+
 // Кассанд бүртгэсний дараа захиалга ямар төлөвт очих вэ.
 // Хүргэлттэй бол шууд хүргэлтийн жагсаалтад; очиж авна гэсэн бол баталгаажсан
 // хэвээр хүлээнэ (хүн ирээд авахад нь «Хүргэгдсэн» болгоно).
@@ -37,8 +46,7 @@ function view(row) {
     paid: !!row.paid_at,
     paidAmount: row.paid_amount || 0,
     paidAt: row.paid_at || null,
-    // Аль үйлчилгээгээр төлөгдсөн: markPaid нь updated_by-д бичдэг (QPay / Storepay / Pocket)
-    via: row.updated_by || row.pay_method || '',
+    via: paidVia(row),
     payMethod: row.pay_method || 'later',
     name: row.name || '',
     phone: row.phone || '',

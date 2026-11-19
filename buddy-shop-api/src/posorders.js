@@ -68,6 +68,11 @@ function view(row) {
     posNo: row.pos_no || null,
     posAt: row.pos_at || null,
     posBy: row.pos_by || null,
+    // Хүргэлт. handedAt байвал хүргэгч авсан — үгүй бол дэлгүүрт хэвтэж байна.
+    courier: row.courier || null,
+    track: row.track || null,
+    handedAt: row.handed_at || null,
+    handedBy: row.handed_by || null,
   };
 }
 
@@ -106,8 +111,15 @@ export async function posOrders(env) {
   const shipping = await rows(env, `SELECT * FROM orders
       WHERE status = 'shipping' ORDER BY COALESCE(pos_at, updated_at) DESC LIMIT 50`);
 
+  // Кассанд бүртгэгдсэн ч хүн нь хараахан ирээгүй «очиж авна» захиалга.
+  // Эдгээр нь хаана ч харагдахгүй бол хүн ирэхэд ажилтан олж чадахгүй.
+  const pickup = await rows(env, `SELECT * FROM orders
+      WHERE status = 'confirmed' AND pos_no IS NOT NULL AND delivery = 'pickup'
+      ORDER BY pos_at DESC LIMIT 50`);
+
   return {
     queue: paid.filter((r) => !nothingToSell(r)).map(view),
+    pickup: pickup.map(view),
     // Зөвхөн картын захиалгыг дараалалд оруулахгүй ч нуухгүй: кассчин «юу болов»
     // гэж гайхахгүйн тулд тусад нь харуулна.
     giftOnly: paid.filter(nothingToSell).map(view),
@@ -143,6 +155,42 @@ export async function posRecordOrder(env, id, body) {
   }
   const o = await env.DB.prepare('SELECT * FROM orders WHERE id = ?1').bind(id).first();
   return [200, { ok: true, order: view(o) }];
+}
+
+// POST /api/pos/orders/:id/handoff   { courier, track, user }
+// Хүргэгч ирж барааг авлаа. Төлөв нь «Хүргэлтэнд» хэвээр — handed_at нь
+// дэлгүүрт хэвтэж байгаа, замд яваа хоёрыг ялгана. Хоосон courier илгээвэл
+// буцааж «өгөөгүй» болгоно (андуурч дарсныг засах зам).
+export async function posHandoff(env, id, body) {
+  await ensureOrders(env);
+  const courier = clip(body && body.courier, 80);
+  const track = clip(body && body.track, 60);
+  const user = clip(body && body.user, 60) || 'Касс';
+  const row = await env.DB.prepare('SELECT * FROM orders WHERE id = ?1').bind(id).first();
+  if (!row) return [404, { error: 'Захиалга олдсонгүй' }];
+  if (!row.pos_no) return [409, { error: 'Кассанд бүртгэгдээгүй захиалга' }];
+  const now = new Date().toISOString();
+  await env.DB.prepare(`UPDATE orders SET courier = ?1, track = ?2, handed_at = ?3, handed_by = ?4,
+      updated_at = ?5, updated_by = ?4 WHERE id = ?6`)
+    .bind(courier || null, track || null, courier ? now : null, courier ? user : null, now, id).run();
+  const o = await env.DB.prepare('SELECT * FROM orders WHERE id = ?1').bind(id).first();
+  return [200, { ok: true, order: view(o) }];
+}
+
+// GET /api/pos/orders/find?q=…
+// Дугаараар нь шалгах: захиалгын дугаар, хүргэлтийн код, баримтын дугаар,
+// утас. Хаягдсан, хүргэгдсэн, цуцлагдсан захиалга ч олдоно — «BS1024 хаана
+// байна?» гэдэг асуултын хариу жагсаалтаас хасагдсан ч олдох ёстой.
+export async function posFind(env, q) {
+  await ensureOrders(env);
+  const s = clip(q, 40);
+  if (s.length < 3) return [400, { error: 'Дор хаяж 3 тэмдэгт бичнэ үү' }];
+  const like = `%${s}%`;
+  const r = await rows(env, `SELECT * FROM orders
+      WHERE number LIKE ?1 OR track LIKE ?1 OR pos_no LIKE ?1
+         OR REPLACE(REPLACE(phone,' ',''),'+976','') LIKE ?1 OR name LIKE ?1
+      ORDER BY id DESC LIMIT 20`, like);
+  return [200, { items: r.map(view) }];
 }
 
 // POST /api/pos/orders/:id/status   { status, user }

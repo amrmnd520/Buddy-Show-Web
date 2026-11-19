@@ -35,7 +35,10 @@ const COLS = { number: 'TEXT', name: 'TEXT', phone: 'TEXT', email: 'TEXT', addre
   gift_from: 'TEXT', gift_to: 'TEXT', gift_msg: 'TEXT',
   // Кассанд бүртгэгдсэн нь: ERP-ийн баримтын дугаар, хэзээ, хэн. pos_no нь
   // давхар зарагдахаас хамгаалдаг түгжээ — нэг л удаа бичигдэнэ (posorders.js).
-  pos_no: 'TEXT', pos_at: 'TEXT', pos_by: 'TEXT' };
+  pos_no: 'TEXT', pos_at: 'TEXT', pos_by: 'TEXT',
+  // Хүргэлт: хэнд, ямар кодоор, хэзээ өгсөн. handed_at байгаа эсэх нь
+  // «дэлгүүрт хүлээж байгаа» ба «замд яваа» хоёрыг ялгана.
+  courier: 'TEXT', track: 'TEXT', handed_at: 'TEXT', handed_by: 'TEXT' };
 let ready = false;
 
 export async function ensureOrders(env) {

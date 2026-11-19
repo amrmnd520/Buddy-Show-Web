@@ -18,6 +18,7 @@ import { sweepGifts } from './gift.js';
 import * as agent from './agent.js';
 import { facebookFeed } from './feed.js';
 import { shiftReport } from './shiftmail.js';
+import { checkOpenShifts } from './shiftwatch.js';
 
 const JSON_HEADERS = { 'content-type': 'application/json; charset=utf-8' };
 const CORS = {
@@ -437,6 +438,12 @@ export default {
     // Hourly while the shop is open (10:00–20:00 Ulaanbaatar). Named rather than left as the
     // fallback so that adding a cron later cannot silently turn into a price sync.
     if (event.cron === '0 2-12 * * *') {
+      // 18:00 УБ дээр нь ээлж хаагдаагүй үлдсэн эсэхийг шалгана. Тусдаа cron
+      // үүсгэх боломжгүй — үнэгүй багцын 5 cron бүгд ашиглагдсан.
+      ctx.waitUntil(checkOpenShifts(env).then(
+        (r) => { if (r.notified) console.log('shift warn', r); },
+        (e) => console.error('shift watch', e.message),
+      ));
       // Supabase унасан үед ERP-д хүрээгүй үлдсэн онлайн бэлгийн картуудыг тавина
       ctx.waitUntil(sweepGifts(env).then((n) => { if (n) console.log('gift sweep', n); }, (e) => console.error('gift sweep', e)));
       ctx.waitUntil(syncErp(env).then(

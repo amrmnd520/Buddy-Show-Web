@@ -32,7 +32,10 @@ const COLS = { number: 'TEXT', name: 'TEXT', phone: 'TEXT', email: 'TEXT', addre
   // Онлайн бэлгийн карт: олгосон кодууд (JSON) ба ERP-д тавигдсан эсэх
   gift_codes: 'TEXT', gift_synced: 'INTEGER',
   // Бэлгийн мессеж: хэнээс хэнд ирснийг, юу бичсэнийг хүлээн авагч харна
-  gift_from: 'TEXT', gift_to: 'TEXT', gift_msg: 'TEXT' };
+  gift_from: 'TEXT', gift_to: 'TEXT', gift_msg: 'TEXT',
+  // Кассанд бүртгэгдсэн нь: ERP-ийн баримтын дугаар, хэзээ, хэн. pos_no нь
+  // давхар зарагдахаас хамгаалдаг түгжээ — нэг л удаа бичигдэнэ (posorders.js).
+  pos_no: 'TEXT', pos_at: 'TEXT', pos_by: 'TEXT' };
 let ready = false;
 
 export async function ensureOrders(env) {

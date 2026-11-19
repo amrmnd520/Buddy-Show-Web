@@ -18,6 +18,7 @@ import { sweepGifts } from './gift.js';
 import * as agent from './agent.js';
 import { facebookFeed } from './feed.js';
 import { shiftReport } from './shiftmail.js';
+import { posOrders, posRecordOrder, posOrderStatus } from './posorders.js';
 import { checkOpenShifts } from './shiftwatch.js';
 
 const JSON_HEADERS = { 'content-type': 'application/json; charset=utf-8' };
@@ -235,6 +236,23 @@ export default {
         }
         if (request.method === 'GET' && path === '/api/pos/card/health') {
           const r = await posCardHealth(request, env); return json(r[1], r[0], { 'cache-control': 'no-store' });
+        }
+        // ── Вэбийн онлайн захиалга → касс ──────────────────────────────────
+        // Кассчин гараар дахин бичихгүй: төлбөр нь орсон захиалга энд жагсаж,
+        // баталгаажуулахад л ERP-д борлуулалт болж бүртгэгдэнэ.
+        if (request.method === 'GET' && path === '/api/pos/orders') {
+          try { return json(await posOrders(env), 200, { 'cache-control': 'no-store' }); }
+          catch (e) { return json({ error: e.message }, 502, { 'cache-control': 'no-store' }); }
+        }
+        const por = path.match(/^\/api\/pos\/orders\/(\d+)\/(record|status|check)$/);
+        if (por && request.method === 'POST') {
+          const oid = Number(por[1]);
+          const body = await request.json().catch(() => ({}));
+          try {
+            if (por[2] === 'check') { const r = await staffCheck(env, oid); return json(r[1], r[0], { 'cache-control': 'no-store' }); }
+            const r = por[2] === 'record' ? await posRecordOrder(env, oid, body) : await posOrderStatus(env, oid, body);
+            return json(r[1], r[0], { 'cache-control': 'no-store' });
+          } catch (e) { return json({ error: e.message }, 502, { 'cache-control': 'no-store' }); }
         }
         return fail(404, 'Not found');
       }

@@ -17,6 +17,7 @@ import { runBackup, listBackups, getBackupFile, backupNotice, latestText } from 
 import { sweepGifts } from './gift.js';
 import * as agent from './agent.js';
 import { facebookFeed } from './feed.js';
+import { shiftReport } from './shiftmail.js';
 
 const JSON_HEADERS = { 'content-type': 'application/json; charset=utf-8' };
 const CORS = {
@@ -197,6 +198,13 @@ export default {
       if (path === '/api/pos/qpay/callback' || path === '/api/pos/storepay/callback') return json({ ok: true });
       if (path.startsWith('/api/pos/')) {
         if (!posAuthed(env, request)) return fail(401, 'Кассын эрх алга');
+        // Ээлж хаахад кассаас ирэх тайлан → имэйл. Хүлээн авагчийг энд
+        // (SHIFT_REPORT_TO) тогтооно, касс сонгохгүй.
+        if (request.method === 'POST' && path === '/api/pos/shift/report') {
+          const body = await request.json().catch(() => null);
+          try { return json(await shiftReport(env, body), 200, { 'cache-control': 'no-store' }); }
+          catch (e) { return json({ ok: false, error: e.message }, 200, { 'cache-control': 'no-store' }); }
+        }
         if (request.method === 'POST' && path === '/api/pos/qpay/invoice') {
           const r = await posInvoice(request, env); return json(r[1], r[0], { 'cache-control': 'no-store' });
         }

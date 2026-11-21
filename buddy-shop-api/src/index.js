@@ -17,6 +17,7 @@ import { runBackup, listBackups, getBackupFile, backupNotice, latestText } from 
 import { sweepGifts } from './gift.js';
 import * as agent from './agent.js';
 import { facebookFeed } from './feed.js';
+import { getBrandLogos, setBrandLogo } from './brands.js';
 import { shiftReport } from './shiftmail.js';
 import { posOrders, posRecordOrder, posOrderStatus, posHandoff, posFind } from './posorders.js';
 import { checkOpenShifts } from './shiftwatch.js';
@@ -171,6 +172,7 @@ export default {
       if (path === '/' || path === '/api/health') return json({ ok: true, service: 'buddy-shop-api' });
       if (request.method === 'GET' && path.startsWith('/img/')) return serveImage(env, decodeURIComponent(path.slice(5)));
       if (request.method === 'GET' && path === '/api/products') return listProducts(env);
+      if (request.method === 'GET' && path === '/api/brands') return json(await getBrandLogos(env), 200, { 'cache-control': 'no-store' });
       // Meta Commerce Manager scheduled feed (Facebook / Instagram catalog)
       if (request.method === 'GET' && path === '/feed/facebook.csv') return facebookFeed(env);
       if (request.method === 'POST' && path === '/api/login') return login(request, env);
@@ -381,6 +383,7 @@ export default {
       const user = await whoIs(request, env);
       if (!user) return fail(401, 'Дахин нэвтэрнэ үү');
       if (request.method === 'GET' && path === '/api/me') return json({ user });
+      if (request.method === 'PUT' && path === '/api/brands') { const r = await setBrandLogo(env, await request.json().catch(() => ({}))); return json(r[1], r[0]); }
       if (request.method === 'POST' && path === '/api/upload') return uploadImage(request, env, url, user);
       if (path.startsWith('/api/telegram')) {
         try {

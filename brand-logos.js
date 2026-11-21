@@ -41,7 +41,7 @@
 #brand-logo-dlg button{padding:7px 10px;border-radius:6px;border:1px solid #cfd6da;background:#f0f3f4;font-weight:600;cursor:pointer}
 #brand-logo-dlg .bl-btns{display:flex;gap:6px}
 #brand-logo-dlg .bl-help{font-size:12px;color:#5a6a72;margin:10px 20px 0}
-#brand-logo-dlg .bl-status{font-size:12px;color:#1f5f3a;min-height:16px}`;
+#brand-logo-dlg .bl-status{display:block;font-size:14px;font-weight:700;color:#1f5f3a;min-height:18px;margin-top:6px}`;
   document.head.appendChild(st);
 
   function brands() {
@@ -101,7 +101,7 @@
         const blob = await toPng(f);
         const { url } = await call('/api/upload', { method: 'POST', headers: { 'content-type': blob.type || 'image/png' }, body: blob });
         await save(brand, url);
-      } catch (e) { draw('Алдаа: ' + e.message); }
+      } catch (e) { fail(e); }
     };
     input.click();
   }
@@ -111,7 +111,12 @@
       const d = await call('/api/brands', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ brand, image }) });
       custom = d.logos || custom; apply();
       draw(image ? `${brand}: лого хадгалагдлаа ✓` : `${brand}: лого арилгалаа`);
-    } catch (e) { draw('Алдаа: ' + e.message); }
+    } catch (e) { fail(e); }
+  }
+
+  function fail(e) {
+    const m = /^(404|401|Not found)$/i.test(String(e.message)) ? 'Сервер шинэчлэгдээгүй байна (worker deploy хийх хэрэгтэй).' : e.message;
+    draw('⚠ Алдаа: ' + m); alert('Лого хадгалагдсангүй: ' + m);
   }
 
   window.openBrandLogos = function () {

@@ -21,7 +21,8 @@ const OFFERED = new Set(['storepay']);
 const payLabel = (m) => (m === 'qpay' ? 'QPay' : BNPL[m] ? BNPL[m] + ' (хуваан төлөх)' : 'Дараа төлөх');
 
 export const STATUS = {
-  new: 'Шинэ', confirmed: 'Баталгаажсан', paid: 'Төлбөр төлөгдсөн', shipping: 'Хүргэлтэнд гарсан',
+  new: 'Шинэ', confirmed: 'Баталгаажсан', paid: 'Төлбөр төлөгдсөн',
+  ready: 'Хүргэгчийг хүлээж байна', shipping: 'Хүргэгчид өгсөн',
   done: 'Хүргэгдсэн', cancelled: 'Цуцалсан',
 };
 const COLS = { number: 'TEXT', name: 'TEXT', phone: 'TEXT', email: 'TEXT', address: 'TEXT', addr: 'TEXT',

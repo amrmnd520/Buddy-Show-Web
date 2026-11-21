@@ -393,7 +393,7 @@
   panel.className = 'admin-panel ord-panel'; panel.id = 'orders-admin';
   let data = null, filter = 'open', openId = null, loadErr = '', page = 0;
   const PER = 10;
-  const OPEN = ['new', 'confirmed', 'paid', 'shipping'];
+  const OPEN = ['new', 'confirmed', 'paid', 'ready', 'shipping'];
   const dtm = s => s ? new Date(s).toLocaleString('sv-SE', { timeZone: 'Asia/Ulaanbaatar' }).slice(0, 16).replace(/-/g, '.') : '';
   async function load() {
     if (!staffToken()) return;

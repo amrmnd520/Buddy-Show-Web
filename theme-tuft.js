@@ -21,11 +21,11 @@
     const anchor = document.querySelector('.hero'); if (!anchor) return;
     const sec = document.createElement('section'); sec.className = 'tf-hero'; sec.setAttribute('aria-label', 'Онцлох цуглуулга');
     const slides = COLLECTIONS.map((c, i) => {
-      const pieces = c.items.map(([id, h]) => {
+      const pieces = c.items.map(([id, h], k) => {
         const p = find(id); if (!p || !img(p)) return '';
-        return `<button class="tf-piece" style="--h:${h}%" onclick="openProduct(${Number(p.id)})" aria-label="${esc(p.name)}"><img src="${esc(img(p))}" alt="" style="height:100%"><span class="tf-tag">${esc(p.name)} · ${typeof money === 'function' ? money(p.price) : p.price}</span></button>`;
+        return `<button class="tf-piece" style="--h:${h}%;--k:${k};--z:${(0.5 + (k % 3) * 0.35).toFixed(2)}" onclick="openProduct(${Number(p.id)})" aria-label="${esc(p.name)}"><img src="${esc(img(p))}" alt="" style="height:100%"><span class="tf-tag">${esc(p.name)} · ${typeof money === 'function' ? money(p.price) : p.price}</span></button>`;
       }).join('');
-      return `<div class="tf-slide${i === 0 ? ' on' : ''}" data-i="${i}">${pieces}</div>`;
+      return `<div class="tf-slide" data-i="${i}">${pieces}</div>`;
     }).join('');
     sec.innerHTML = `<div class="tf-top"><span><b>Buddy Shop</b> · Загас агнуурын дэлгүүр</span><span>Emart Chinggis B1 · Улаанбаатар</span></div>
       <div class="tf-word" aria-hidden="true">BUDDY</div>
@@ -34,19 +34,42 @@
         <div class="tf-dots">${COLLECTIONS.map((c, i) => `<button aria-label="${esc(c.name)}" class="${i === 0 ? 'on' : ''}" data-go="${i}"></button>`).join('')}</div>
         <button class="tf-cta" onclick="document.getElementById('catalog').scrollIntoView({behavior:'smooth'})">Бүх бараа ↓</button></div>`;
     anchor.after(sec);
+    requestAnimationFrame(() => requestAnimationFrame(() => sec.querySelector('.tf-slide[data-i="0"]').classList.add('on')));
     let cur = 0, timer;
-    const show = i => {
-      cur = (i + COLLECTIONS.length) % COLLECTIONS.length;
-      sec.querySelectorAll('.tf-slide').forEach(s => s.classList.toggle('on', Number(s.dataset.i) === cur));
+    let busy = 0;
+    const show = (i, dir) => {
+      const next = (i + COLLECTIONS.length) % COLLECTIONS.length;
+      if (next === cur) return;
+      const back = dir != null ? dir < 0 : (next < cur && !(cur === COLLECTIONS.length - 1 && next === 0)) || (cur === 0 && next === COLLECTIONS.length - 1);
+      sec.classList.toggle('back', back);
+      const old = sec.querySelector(`.tf-slide[data-i="${cur}"]`), neu = sec.querySelector(`.tf-slide[data-i="${next}"]`);
+      sec.querySelectorAll('.tf-slide.out').forEach(s => s.classList.remove('out'));
+      // start the new set from its side before turning it in
+      neu.classList.remove('on'); void neu.offsetWidth;
+      old.classList.remove('on'); old.classList.add('out');
+      requestAnimationFrame(() => neu.classList.add('on'));
+      clearTimeout(busy); busy = setTimeout(() => old.classList.remove("out"), 1500);
+      sec.classList.add('moving'); setTimeout(() => sec.classList.remove('moving'), 900);
+      cur = next;
       sec.querySelectorAll('.tf-dots button').forEach(b => b.classList.toggle('on', Number(b.dataset.go) === cur));
       sec.querySelector('.tf-no').textContent = String(cur + 1).padStart(2, '0');
       sec.querySelector('.tf-coll').innerHTML = `<b>${esc(COLLECTIONS[cur].name)}</b><span>${esc(COLLECTIONS[cur].note)}</span>`;
+      const w = sec.querySelector('.tf-word'); if (w) w.style.transform = `translate(calc(-50% + ${(back ? 1 : -1) * 2}vw),-56%)`;
+      setTimeout(() => { if (w) w.style.transform = ''; }, 700);
     };
-    const auto = () => { clearInterval(timer); if (!matchMedia('(prefers-reduced-motion: reduce)').matches) timer = setInterval(() => show(cur + 1), 6000); };
-    sec.addEventListener('click', e => { const b = e.target.closest('[data-go]'); if (b) { show(Number(b.dataset.go)); auto(); } });
+    // the pieces lean a little toward the pointer
+    sec.addEventListener('pointermove', e => {
+      if (e.pointerType !== 'mouse') return;
+      const r = sec.getBoundingClientRect();
+      sec.style.setProperty('--mx', ((e.clientX - r.left) / r.width - .5).toFixed(3));
+      sec.style.setProperty('--my', ((e.clientY - r.top) / r.height - .5).toFixed(3));
+    });
+    sec.addEventListener('pointerleave', () => { sec.style.setProperty('--mx', 0); sec.style.setProperty('--my', 0); });
+    const auto = () => { clearInterval(timer); if (!matchMedia('(prefers-reduced-motion: reduce)').matches) timer = setInterval(() => show(cur + 1, 1), 6000); };
+    sec.addEventListener('click', e => { const b = e.target.closest('[data-go]'); if (b) { const g = Number(b.dataset.go); show(g, g < cur ? -1 : 1); auto(); } });
     let x0 = null;
     sec.addEventListener('touchstart', e => { x0 = e.touches[0].clientX; }, { passive: true });
-    sec.addEventListener('touchend', e => { if (x0 == null) return; const dx = e.changedTouches[0].clientX - x0; if (Math.abs(dx) > 40) { show(cur + (dx < 0 ? 1 : -1)); auto(); } x0 = null; });
+    sec.addEventListener('touchend', e => { if (x0 == null) return; const dx = e.changedTouches[0].clientX - x0; if (Math.abs(dx) > 40) { show(cur + (dx < 0 ? 1 : -1), dx < 0 ? 1 : -1); auto(); } x0 = null; });
     sec.addEventListener('mouseenter', () => clearInterval(timer)); sec.addEventListener('mouseleave', auto);
     auto();
   }

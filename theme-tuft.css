@@ -91,7 +91,6 @@ html.tuft .product{background:transparent!important;border:0!important;border-ra
 html.tuft .product-image{background:var(--t-soft)!important;border-radius:4px!important;height:clamp(200px,22vw,300px)!important;padding:18px!important;cursor:pointer;transition:background .3s}
 html.tuft .product:hover .product-image{background:#e1dbcf!important}
 html.tuft .product-image img{mix-blend-mode:multiply;transition:transform .5s cubic-bezier(.2,.7,.2,1)}
-html.tuft .product:hover .product-image img{transform:scale(1.04)}
 html.tuft .product-content{padding:12px 2px 6px!important;background:transparent!important;flex:0 0 auto!important}
 html.tuft .product .price{margin-top:4px!important}
 html.tuft .product .brand{color:var(--t-muted)!important;font-size:10px!important;letter-spacing:.18em!important;text-transform:uppercase;font-weight:700!important}
@@ -187,3 +186,19 @@ html.tuft #product-detail[open]{animation:tfPop .5s cubic-bezier(.16,.84,.24,1)}
 @keyframes tfPop{from{opacity:0;transform:perspective(1200px) translateY(24px) rotateX(6deg) scale(.97)}to{opacity:1;transform:none}}
 html.tuft .detail-photo{animation:tfImg .45s ease}
 @keyframes tfImg{from{opacity:.2}to{opacity:1}}
+
+/* ---------- 3D tilt: product photos lean toward the pointer (theme-tuft.js sets --px/--py, -0.5…0.5) ---------- */
+html.tuft .product-image,html.tuft .detail-gallery-main{position:relative;overflow:hidden;transform-origin:50% 60%;
+  transform:perspective(900px) rotateX(calc(var(--py,0) * -14deg)) rotateY(calc(var(--px,0) * 16deg)) translateZ(0);
+  transition:transform .7s cubic-bezier(.2,.7,.2,1),box-shadow .7s cubic-bezier(.2,.7,.2,1);will-change:transform}
+html.tuft .tf-tilt{transition:transform .12s linear,box-shadow .12s linear!important;
+  box-shadow:calc(var(--px,0) * -28px) calc(22px + var(--py,0) * -14px) 44px -14px rgba(60,48,30,.28)}
+html.tuft .product-image img,html.tuft .detail-gallery-main .detail-photo{
+  transform:translate3d(calc(var(--px,0) * 16px),calc(var(--py,0) * 12px),0) scale(var(--zs,1));transition:transform .7s cubic-bezier(.2,.7,.2,1)}
+html.tuft .tf-tilt img,html.tuft .tf-tilt .detail-photo{--zs:1.05;transition:transform .12s linear}
+html.tuft .product-image::after,html.tuft .detail-gallery-main::after{content:'';position:absolute;inset:0;border-radius:inherit;pointer-events:none;opacity:0;transition:opacity .5s;
+  background:radial-gradient(circle at calc(50% + var(--px,0) * 120%) calc(40% + var(--py,0) * 120%),rgba(255,255,255,.55),rgba(255,255,255,0) 55%);mix-blend-mode:soft-light}
+html.tuft .tf-tilt::after{opacity:1}
+html.tuft .detail-gallery-main{touch-action:pan-y}
+html.tuft .detail-photo.enlarged{--zs:1.6}
+@media(prefers-reduced-motion:reduce){html.tuft .product-image,html.tuft .detail-gallery-main,html.tuft .product-image img,html.tuft .detail-photo{transform:none!important}}

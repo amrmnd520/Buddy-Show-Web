@@ -94,6 +94,35 @@
   }
   new MutationObserver(() => decorate()).observe(document.body, { childList: true, subtree: true });
 
+
+  // 3D tilt on product photos: cards and the product window lean toward the pointer (or finger)
+  (() => {
+    if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    let el = null, raf = 0, last = null;
+    const SEL = '.product-image, .detail-gallery-main';
+    const apply = () => {
+      raf = 0; if (!el || !last) return;
+      const r = el.getBoundingClientRect();
+      const px = Math.max(-.5, Math.min(.5, (last.x - r.left) / r.width - .5));
+      const py = Math.max(-.5, Math.min(.5, (last.y - r.top) / r.height - .5));
+      el.style.setProperty('--px', px.toFixed(3)); el.style.setProperty('--py', py.toFixed(3));
+    };
+    const release = t => { if (!t) return; t.classList.remove('tf-tilt'); t.style.setProperty('--px', 0); t.style.setProperty('--py', 0); };
+    document.addEventListener('pointermove', e => {
+      const t = e.target.closest && e.target.closest(SEL);
+      if (t !== el) { release(el); el = t; }
+      if (!el) return;
+      // phones: only the big photo in the product window follows the finger (cards keep scrolling free)
+      if (e.pointerType !== 'mouse' && !el.classList.contains('detail-gallery-main')) { el = null; return; }
+      el.classList.add('tf-tilt'); last = { x: e.clientX, y: e.clientY };
+      if (!raf) raf = requestAnimationFrame(apply);
+    }, { passive: true });
+    document.addEventListener('pointerleave', () => { release(el); el = null; }, true);
+    document.addEventListener('pointerup', e => { if (e.pointerType !== 'mouse') { release(el); el = null; } }, { passive: true });
+    document.addEventListener('pointercancel', () => { release(el); el = null; }, { passive: true });
+    document.addEventListener('scroll', () => { if (el) { release(el); el = null; } }, { passive: true, capture: true });
+  })();
+
   function badge() {
     if (document.querySelector('.tf-badge')) return;
     const d = document.createElement('div'); d.className = 'tf-badge';

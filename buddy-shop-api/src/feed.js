@@ -71,7 +71,15 @@ const cell = (v) => {
 };
 
 const COLUMNS = ['id', 'title', 'description', 'availability', 'condition', 'price', 'link', 'image_link',
-  'additional_image_link', 'brand', 'product_type', 'item_group_id', 'size', 'inventory'];
+  'additional_image_link', 'brand', 'product_type', 'item_group_id', 'size', 'inventory', 'custom_label_0'];
+
+// custom_label_0 = "winter" for winter-fishing gear, so Commerce Manager can build a product set
+// («custom_label_0 is winter») for seasonal ads: the winter category, every Norfin item, and
+// clothing whose name says it is for the cold.
+const WINTER_WORDS = /\bwinter\b|thermal|fleece|insulated|флийс|дулаан/i;
+const isWinter = (p) => String(p.category || '').startsWith('Өвлийн')
+  || /^norfin$/i.test(String(p.brand || '').trim())
+  || (/^(Хувцас|Өвлийн)/.test(String(p.category || '')) && WINTER_WORDS.test(String(p.name || '')));
 
 async function build(env) {
   const [catalog, rows, erp, mn] = await Promise.all([
@@ -114,6 +122,7 @@ async function build(env) {
       additional_image_link: extra,
       brand: String(p.brand || 'Buddy Shop').slice(0, 100),
       product_type: type,
+      custom_label_0: isWinter(p) ? 'winter' : '',
     };
 
     const sizes = Array.isArray(p.sizes) ? p.sizes.filter((s) => s && s.label) : [];

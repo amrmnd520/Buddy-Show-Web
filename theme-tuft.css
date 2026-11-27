@@ -28,26 +28,18 @@ html.tuft .tf-hero{position:relative;overflow:hidden;background:var(--t-bg);min-
 .tf-top b{color:var(--t-ink)}
 .tf-word{position:absolute;left:50%;top:50%;transform:translate(-50%,-56%);font-weight:800;font-size:clamp(120px,27vw,420px);letter-spacing:-.04em;line-height:.8;color:#ddd7cb;white-space:nowrap;z-index:0;pointer-events:none;transition:opacity .6s}
 .tf-stage{position:relative;flex:1;min-height:420px}
-.tf-slide{position:absolute;inset:0;display:flex;align-items:flex-end;justify-content:center;gap:0;pointer-events:none;visibility:hidden}
-.tf-slide.on,.tf-slide.out{visibility:visible}
-.tf-slide.on{pointer-events:auto}
-/* each piece turns in from the side in 3D, one after another; the leaving set turns away the other way.
-   (No perspective/opacity on the slide itself: that would isolate the pieces and bring back their white boxes.) */
-.tf-piece{position:relative;flex:0 0 auto;border:0;background:none;padding:0;cursor:pointer;margin:0 -1.2%;mix-blend-mode:multiply;height:var(--h);
-  --dir:1;opacity:0;transform:perspective(1100px) translate3d(calc(var(--dir) * 38vw),40px,-260px) rotateY(calc(var(--dir) * -62deg)) scale(.86);
-  transition:transform 1.45s cubic-bezier(.22,.9,.24,1),opacity .9s ease;transition-delay:calc(var(--k) * 90ms)}
-.tf-hero.back .tf-piece{--dir:-1}
-.tf-slide.on .tf-piece{opacity:1;transform:perspective(1100px) translate3d(0,0,0) rotateY(0) scale(1)}
-.tf-slide.out .tf-piece{opacity:0;transform:perspective(1100px) translate3d(calc(var(--dir) * -34vw),-10px,-320px) rotateY(calc(var(--dir) * 58deg)) scale(.82);transition-duration:1s,.6s;transition-timing-function:cubic-bezier(.55,0,.75,.4),ease}
-.tf-piece img{display:block;width:auto;max-width:100%;object-fit:contain;
-  transform:perspective(900px) translate3d(calc(var(--mx,0) * var(--z) * 18px),calc(var(--my,0) * var(--z) * 10px + var(--lift,0px)),0) rotateY(calc(var(--mx,0) * 9deg)) rotateX(calc(var(--my,0) * -6deg));
-  transition:transform .6s cubic-bezier(.2,.7,.2,1)}
-.tf-piece:hover{--lift:-10px}
-.tf-word{transition:transform 1.1s cubic-bezier(.16,.84,.24,1),letter-spacing 1.1s cubic-bezier(.16,.84,.24,1)}
-.tf-hero.moving .tf-word{letter-spacing:-.02em}
-@media(prefers-reduced-motion:reduce){.tf-piece,.tf-piece img,.tf-word{transition:opacity .4s!important;transform:none!important}}
-.tf-piece .tf-tag{mix-blend-mode:normal;position:absolute;left:50%;bottom:-6px;transform:translate(-50%,100%);white-space:nowrap;font-size:11px;letter-spacing:.06em;color:var(--t-ink);background:var(--t-paper);border:1px solid var(--t-line);padding:6px 10px;border-radius:20px;opacity:0;transition:opacity .25s;pointer-events:none}
-.tf-piece:hover .tf-tag,.tf-piece:focus-visible .tf-tag{opacity:1}
+.tf-stage{touch-action:pan-y;cursor:grab}
+.tf-hero.dragging .tf-stage{cursor:grabbing}
+/* the ring: theme-tuft.js places every piece each frame (no shared 3D parent — see the note there) */
+.tf-piece{position:absolute;left:50%;bottom:0;width:min(30vw,400px);height:92%;border:0;background:none;padding:0;cursor:pointer;mix-blend-mode:multiply;
+  transform-origin:50% 100%;will-change:transform,opacity;opacity:0;display:flex;align-items:flex-end;justify-content:center;-webkit-tap-highlight-color:transparent}
+.tf-piece img{display:block;max-width:100%;max-height:100%;object-fit:contain;object-position:50% 100%;pointer-events:none;transition:transform .5s cubic-bezier(.2,.7,.2,1)}
+.tf-piece.front:hover img{transform:translateY(-10px) scale(1.03)}
+.tf-info{min-width:0;max-width:38%}
+.tf-coll b,.tf-coll span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block}
+.tf-arrows{display:flex;gap:10px;position:absolute;left:50%;transform:translateX(-50%);bottom:0}
+.tf-arrows button{width:44px;height:44px;border-radius:50%;border:1px solid var(--t-line);background:transparent;color:var(--t-ink);font-size:16px;cursor:pointer;transition:all .2s}
+.tf-arrows button:hover{background:var(--t-ink);color:var(--t-paper);border-color:var(--t-ink)}
 .tf-foot{display:flex;justify-content:space-between;align-items:flex-end;position:relative;z-index:3;margin-top:30px}
 .tf-no{font-size:44px;font-weight:300;letter-spacing:-.02em;line-height:1}
 .tf-coll{font-size:10.5px;letter-spacing:.18em;text-transform:uppercase;color:var(--t-muted);font-weight:700;margin-top:6px}
@@ -62,12 +54,11 @@ html.tuft .tf-hero{position:relative;overflow:hidden;background:var(--t-bg);min-
   .tf-word{font-size:33vw;top:42%;transform:translate(-50%,-50%)}
   .tf-stage{min-height:300px;flex:none;height:300px}
   .tf-foot{margin-top:18px}
-  .tf-piece{margin:0 -3%;height:calc(var(--h) * .8);max-width:46vw}
-  .tf-slide{align-items:flex-end;padding-bottom:10px}
-  .tf-piece:nth-child(n+4){display:none}
+  .tf-piece{width:48vw}
+  .tf-info{max-width:none;padding-right:8px}
+  .tf-arrows{display:none}
   .tf-no{font-size:32px}
   .tf-top span:last-child{display:none}
-  .tf-dots{bottom:auto;top:-18px}
 }
 
 /* ---------- category rows ---------- */

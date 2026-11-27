@@ -33,7 +33,18 @@ html.tuft .tf-hero{position:relative;overflow:hidden;background:var(--t-bg);min-
 /* the ring: theme-tuft.js places every piece each frame (no shared 3D parent — see the note there) */
 .tf-piece{position:absolute;left:50%;bottom:0;width:min(30vw,400px);height:92%;border:0;background:none;padding:0;cursor:pointer;mix-blend-mode:multiply;
   transform-origin:50% 100%;will-change:transform,opacity;opacity:0;display:flex;align-items:flex-end;justify-content:center;-webkit-tap-highlight-color:transparent}
-.tf-piece img{display:block;max-width:100%;max-height:100%;object-fit:contain;object-position:50% 100%;pointer-events:none;transition:transform .5s cubic-bezier(.2,.7,.2,1)}
+.tf-piece{flex-direction:column;align-items:center;justify-content:flex-end}
+.tf-piece img{display:block;max-width:100%;flex:0 1 auto;min-height:0;max-height:100%;object-fit:contain;object-position:50% 100%;pointer-events:none;transition:transform .5s cubic-bezier(.2,.7,.2,1)}
+.tf-label{display:none;flex:none;margin-top:14px;font:800 15px/1.2 'Manrope',sans-serif;letter-spacing:.2em;text-transform:uppercase;color:#1f1e1b;white-space:nowrap;pointer-events:none}
+.tf-piece.group{height:86%}
+.tf-piece.group img{max-height:calc(100% - 40px)}
+.tf-piece.group .tf-label{display:block}
+.tf-piece.group.front .tf-label{border-bottom:2px solid #1f1e1b;padding-bottom:4px}
+.tf-path{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.tf-path button{background:none;border:0;padding:0;font:inherit;letter-spacing:inherit;text-transform:inherit;color:var(--t-muted);cursor:pointer}
+.tf-path button:hover{color:var(--t-ink)}
+.tf-path b{color:var(--t-ink)}.tf-path i{font-style:normal;opacity:.5}
+.tf-path .tf-back{width:30px;height:30px;border-radius:50%;border:1px solid var(--t-line);color:var(--t-ink);font-size:14px;letter-spacing:0;margin-right:4px}
 .tf-piece.front:hover img{transform:translateY(-10px) scale(1.03)}
 .tf-info{min-width:0;max-width:38%}
 .tf-coll b,.tf-coll span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block}
@@ -50,7 +61,9 @@ html.tuft .tf-hero{position:relative;overflow:hidden;background:var(--t-bg);min-
 .tf-cta{font-size:10.5px;letter-spacing:.18em;text-transform:uppercase;font-weight:800;color:var(--t-ink);background:none;border:0;border-bottom:1px solid var(--t-ink);padding:4px 0;cursor:pointer}
 @media(max-width:700px){
   html.tuft .tf-hero{min-height:0;padding:14px 16px 16px}
-  .tf-top{display:none}
+  .tf-top{font-size:10px}
+  .tf-top span:last-child{display:none}
+  .tf-label{font-size:13px;letter-spacing:.14em}
   .tf-word{font-size:33vw;top:42%;transform:translate(-50%,-50%)}
   .tf-stage{min-height:300px;flex:none;height:300px}
   .tf-foot{margin-top:18px}
